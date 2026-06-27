@@ -117,7 +117,6 @@ try {
         );
     ");
 
-    // Индексы
     try { $pdo->exec("CREATE UNIQUE INDEX idx_posts_slug ON posts(slug)"); } catch (PDOException $e) {}
     try { $pdo->exec("CREATE FULLTEXT INDEX idx_fulltext_content ON posts(content)"); } catch (PDOException $e) {}
     try { $pdo->exec("CREATE INDEX idx_posts_user_time ON posts(user_id, created_at)"); } catch (PDOException $e) {}
@@ -132,11 +131,13 @@ try {
         CREATE TABLE IF NOT EXISTS temp_auth (
             token VARCHAR(128) PRIMARY KEY,
             user_id INT NOT NULL,
-            code VARCHAR(10) DEFAULT '',
+            code VARCHAR(64) DEFAULT '',
             type VARCHAR(20) DEFAULT '',
             expires_at DATETIME NOT NULL
         );
     ");
+
+    try { $pdo->exec("ALTER TABLE temp_auth MODIFY COLUMN code VARCHAR(64) DEFAULT ''"); } catch (PDOException $e) {}
 
     $pdo->exec("UPDATE posts SET slug = SUBSTRING(MD5(RAND()), 1, 10) WHERE slug IS NULL OR slug = ''");
 
@@ -144,9 +145,6 @@ try {
     die("Критическая ошибка БД: Сервис временно недоступен."); 
 }
 
-// ==========================================
-// 2. СИСТЕМА СЕССИЙ И CSRF
-// ==========================================
 function createSession($userId) {
     global $pdo;
     $token = bin2hex(random_bytes(64)); 
@@ -204,9 +202,6 @@ function getProxyUrl($url) {
     return $base_path . '/index.php?api=proxy&url=' . base64_encode($url);
 }
 
-// ==========================================
-// 2.5 ФУНКЦИИ 2FA (Resend + TOTP)
-// ==========================================
 function sendResendEmail($to, $subject, $code) {
     $apiKey = $_ENV['RESEND_API_KEY'] ?? getenv('RESEND_API_KEY');
     if (!$apiKey) return false;
@@ -268,7 +263,6 @@ function verifyTOTP($secret, $code) {
     $decoded = base32_decode_tfa($secret);
     $timeSlot = floor(time() / 30);
     
-    // Проверка текущего и соседних интервалов времени (+- 30 сек)
     for ($i = -1; $i <= 1; $i++) {
         $ts = pack('N*', 0) . pack('N*', $timeSlot + $i);
         $hash = hash_hmac('sha1', $ts, $decoded, true);
@@ -285,10 +279,6 @@ function verifyTOTP($secret, $code) {
     return false;
 }
 
-
-// ==========================================
-// 3. БЭКЕНД API
-// ==========================================
 if (isset($_GET['api'])) {
     $action = $_GET['api'];
     
@@ -383,7 +373,6 @@ if (isset($_GET['api'])) {
                 }
                 
                 if ($is_valid) {
-                    // Проверка на включенный 2FA
                     if ($user['tfa_enabled']) {
                         $tempToken = bin2hex(random_bytes(32));
                         $code = '';
@@ -461,7 +450,6 @@ if (isset($_GET['api'])) {
                 }
                 break;
 
-            // --- 2FA НАСТРОЙКИ (SETUP) ---
             case 'tfa_settings':
                 requireAuth();
                 $stmt = $pdo->prepare("SELECT tfa_enabled, tfa_method FROM users WHERE id = ?");
@@ -547,8 +535,18 @@ if (isset($_GET['api'])) {
                 echo json_encode(['success' => true]);
                 break;
 
+            case 'update_ip':
+                requireAuth();
+                $ip = substr($_POST['ip'] ?? '', 0, 45);
+                if (filter_var($ip, FILTER_VALIDATE_IP)) {
+                    $stmt = $pdo->prepare("UPDATE sessions SET ip_address = ? WHERE token = ?");
+                    $stmt->execute([$ip, $current_session['token']]);
+                    echo json_encode(['success' => true]);
+                } else {
+                    echo json_encode(['success' => false, 'error' => 'Invalid IP']);
+                }
+                break;
 
-            // ... (ВЕСЬ ОСТАЛЬНОЙ API КОД БЕЗ ИЗМЕНЕНИЙ) ...
             case 'search':
                 $q = trim($_GET['q'] ?? '');
                 if (!$q) { echo json_encode(['users' => [], 'posts' => []]); break; }
@@ -1050,9 +1048,6 @@ if (isset($_GET['api'])) {
     exit;
 }
 
-// ==========================================
-// 4. SEO ОПТИМИЗАЦИЯ
-// ==========================================
 $req_path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $base_path = rtrim(dirname($_SERVER['SCRIPT_NAME']), '\\/');
 if ($base_path && strpos($req_path, $base_path) === 0) {
@@ -1171,6 +1166,20 @@ try {
         .mt-4 { margin-top: 1rem; }
         .gap-2 { gap: 0.5rem; }
         .gap-3 { gap: 0.75rem; }
+        
+        .p-2 { padding: 0.5rem; }
+        .p-4 { padding: 1rem; }
+        .text-xs { font-size: 0.75rem; }
+        .text-sm { font-size: 0.875rem; }
+        .tracking-widest { letter-spacing: 0.1em; }
+        .bg-white { background-color: #ffffff; }
+        .rounded-lg { border-radius: 0.5rem; }
+        .inline-block { display: inline-block; }
+        .border-b { border-bottom: 1px solid var(--surface-hover); }
+        .border-surface-hover { border-color: var(--surface-hover); }
+        .overflow-y-auto { overflow-y: auto; }
+        .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .bg-surface-hover { background-color: var(--surface-hover); }
 
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slide-up-fade { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
@@ -1418,7 +1427,6 @@ try {
         .add-more-grid-item { border: 2px dashed var(--surface-hover); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: var(--text-muted); cursor: pointer; border-radius: 8px; flex-shrink: 0; width: 80px; height: 80px; transition: var(--transition); }
         .add-more-grid-item:hover { background: var(--surface-hover); color: white; border-color: transparent; }
 
-        /* TOGGLE SWITCH CSS */
         .toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
         .toggle-switch input { opacity: 0; width: 0; height: 0; }
         .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--surface-hover); transition: .4s; border-radius: 24px; }
@@ -1427,7 +1435,6 @@ try {
         .toggle-switch input:checked + .toggle-slider:before { transform: translateX(20px); background-color: var(--bg); }
         .toggle-switch input:disabled + .toggle-slider { opacity: 0.5; cursor: not-allowed; }
 
-        /* RADIO BUTTONS CSS */
         .radio-group { display: flex; gap: 1rem; margin-bottom: 1rem; }
         .radio-label { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; background: var(--surface-elevated); border: 2px solid transparent; border-radius: var(--radius-md); cursor: pointer; font-weight: 600; transition: var(--transition); }
         .radio-label input { display: none; }
@@ -1440,7 +1447,7 @@ try {
     <script>
         const BASE_PATH = '<?php echo rtrim(dirname($_SERVER["SCRIPT_NAME"]), "\\/"); ?>';
         const apiCall = (action) => BASE_PATH + '/index.php?api=' + action;
-        const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+        const MAX_FILE_SIZE = 5 * 1024 * 1024;
         
         const getProxyUrl = (url) => {
             if (!url) return '';
@@ -1680,7 +1687,6 @@ try {
         </div>
     </div>
 
-    <!-- 2FA НАСТРОЙКИ (SETUP) -->
     <div id="tfaSettingsModal" class="modal-overlay" style="z-index: 110;" onclick="closeModalOnOutsideClick(event, 'tfaSettingsModal')">
         <div class="modal-content" style="max-width: 450px;">
             <div class="flex justify-between items-center mb-6">
@@ -1749,7 +1755,6 @@ try {
         </div>
     </div>
 
-    <!-- 2FA ЛОГИН (ВХОД) -->
     <div id="tfaLoginModal" class="modal-overlay" style="z-index: 200; background: var(--bg);" onclick="closeModalOnOutsideClick(event, 'tfaLoginModal')">
         <div class="modal-content" style="max-width: 400px; text-align: center; background: transparent; padding: 2rem;">
             <i id="tfaLoginIcon" class="ph ph-shield-check mb-4" style="font-size: 4rem; color: var(--accent);"></i>
@@ -1767,7 +1772,6 @@ try {
         </div>
     </div>
 
-    <!-- ОСТАЛЬНЫЕ МОДАЛКИ (Без изменений) -->
     <div id="cropModal" class="modal-overlay" style="z-index: 200;">
         <div class="modal-content">
             <h3 class="font-bold mb-4" style="font-size:1.2rem;">Обрезать аватар</h3>
@@ -1897,11 +1901,9 @@ try {
         let isDragging = false;
         let wheelTimeout;
 
-        // Переменные для 2FA логина
         let tfaLoginTempToken = '';
         let tfaLoginMethod = '';
         
-        // Переменные для 2FA настройки
         let tfaSetupTempToken = '';
 
         const showToast = (msg) => {
@@ -2143,10 +2145,6 @@ try {
             }
         });
 
-        // ==========================
-        // JS: 2FA LOGIC 
-        // ==========================
-        
         async function handleAuth(e, action) {
             e.preventDefault();
             const form = e.target;
@@ -2279,7 +2277,7 @@ try {
                 showConfirm('Отключение 2FA', 'Вы уверены, что хотите отключить двухфакторную аутентификацию? Ваша учетная запись станет менее защищенной.', () => {
                     disableTfa();
                 });
-                toggle.checked = true; // Возвращаем визуально пока не подтвердит
+                toggle.checked = true;
             }
         }
 
@@ -2390,10 +2388,6 @@ try {
                 showToast("Ошибка отключения 2FA");
             }
         }
-
-        // ==========================
-        // КОНЕЦ JS: 2FA LOGIC 
-        // ==========================
 
         function markPostAsSeen(postId) {
             if (!currentUser || !postId) return;
@@ -2558,6 +2552,27 @@ try {
             }, 420);
         }
 
+        async function updateDynamicIp() {
+            if (!currentUser) return;
+            const lastUpdateKey = 'last_ip_update_' + currentUser.id;
+            const lastUpdate = localStorage.getItem(lastUpdateKey);
+            const now = Date.now();
+            
+            if (!lastUpdate || (now - parseInt(lastUpdate)) > 86400000) {
+                try {
+                    const res = await fetch('https://api.ipify.org?format=json');
+                    const data = await res.json();
+                    if (data.ip) {
+                        const fd = new FormData();
+                        fd.append('ip', data.ip);
+                        fd.append('csrf_token', csrfToken);
+                        await fetch(apiCall('update_ip'), { method: 'POST', body: fd });
+                        localStorage.setItem(lastUpdateKey, now.toString());
+                    }
+                } catch(e) {}
+            }
+        }
+
         async function init() {
             try {
                 const res = await fetch(apiCall('me'), { cache: 'no-store' });
@@ -2565,6 +2580,7 @@ try {
                 const data = await res.json();
                 csrfToken = data.csrf || '';
                 currentUser = data.user || null;
+                updateDynamicIp();
             } catch (e) { showToast('Не удалось связаться с сервером'); } 
             finally { handleRoute(); }
         }
