@@ -732,6 +732,60 @@
         feedViewEl.addEventListener('mouseup', handleSwipeEnd);
         feedViewEl.addEventListener('mouseleave', handleSwipeEnd);
 
+        function initPostCarousel(index) {
+            const wrapper = document.getElementById('feedWrapper');
+            if (!wrapper) return;
+            
+            if (window.postSliderInterval) { clearInterval(window.postSliderInterval); }
+            const activeSlider = wrapper.children[index]?.querySelector('.image-slider');
+            if (activeSlider && activeSlider.children.length > 1) {
+                let isSliderPaused = false;
+                const imagesCount = activeSlider.children.length;
+                const dotsContainer = activeSlider.nextElementSibling;
+                const dots = dotsContainer?.querySelectorAll('.slider-dot');
+                
+                if(dots) {
+                    dots.forEach(d => { d.classList.remove('active', 'paused'); void d.offsetWidth; });
+                    if(dots[0]) dots[0].classList.add('active');
+                }
+                activeSlider.style.transform = `translateX(0%)`; 
+                let currentSlideIndex = 0;
+
+                window.autoSlideLogic = () => {
+                    if (isSliderPaused) return;
+                    
+                    currentSlideIndex = (currentSlideIndex + 1) % imagesCount;
+                    activeSlider.style.transform = `translateX(-${currentSlideIndex * 100}%)`;
+                    
+                    if(dots) {
+                        dots.forEach((d, i) => {
+                            d.classList.remove('active', 'paused');
+                            if (i === currentSlideIndex) { void d.offsetWidth; d.classList.add('active'); }
+                        });
+                    }
+                };
+
+                window.postSliderInterval = setInterval(window.autoSlideLogic, 2000);
+
+                const setPause = (state) => {
+                    isSliderPaused = state;
+                    const activeDot = dotsContainer?.querySelector('.slider-dot.active');
+                    if (activeDot) {
+                        if (state) activeDot.classList.add('paused');
+                        else activeDot.classList.remove('paused');
+                    }
+                };
+
+                const postWrapper = wrapper.children[index]?.querySelector('.post-wrapper');
+                if (postWrapper) {
+                    postWrapper.addEventListener('pointerdown', () => setPause(true));
+                    postWrapper.addEventListener('pointerup', () => setPause(false));
+                    postWrapper.addEventListener('pointercancel', () => setPause(false));
+                    postWrapper.addEventListener('pointerleave', () => setPause(false));
+                }
+            }
+        }
+
         function goToFeedPost(index) {
             const wrapper = document.getElementById('feedWrapper');
             if (!wrapper) return;
@@ -758,54 +812,7 @@
                     markPostAsSeen(newPostId);
                 }
                 
-                if (window.postSliderInterval) { clearInterval(window.postSliderInterval); }
-                const activeSlider = wrapper.children[currentFeedIndex]?.querySelector('.image-slider');
-                if (activeSlider && activeSlider.children.length > 1) {
-                    let isSliderPaused = false;
-                    const imagesCount = activeSlider.children.length;
-                    const dotsContainer = activeSlider.nextElementSibling;
-                    const dots = dotsContainer?.querySelectorAll('.slider-dot');
-                    
-                    if(dots) {
-                        dots.forEach(d => { d.classList.remove('active', 'paused'); void d.offsetWidth; });
-                        if(dots[0]) dots[0].classList.add('active');
-                    }
-                    activeSlider.style.transform = `translateX(0%)`; 
-                    let currentSlideIndex = 0;
-
-                    window.autoSlideLogic = () => {
-                        if (isSliderPaused) return;
-                        
-                        currentSlideIndex = (currentSlideIndex + 1) % imagesCount;
-                        activeSlider.style.transform = `translateX(-${currentSlideIndex * 100}%)`;
-                        
-                        if(dots) {
-                            dots.forEach((d, i) => {
-                                d.classList.remove('active', 'paused');
-                                if (i === currentSlideIndex) { void d.offsetWidth; d.classList.add('active'); }
-                            });
-                        }
-                    };
-
-                    window.postSliderInterval = setInterval(window.autoSlideLogic, 2000);
-
-                    const setPause = (state) => {
-                        isSliderPaused = state;
-                        const activeDot = dotsContainer?.querySelector('.slider-dot.active');
-                        if (activeDot) {
-                            if (state) activeDot.classList.add('paused');
-                            else activeDot.classList.remove('paused');
-                        }
-                    };
-
-                    const postWrapper = wrapper.children[currentFeedIndex]?.querySelector('.post-wrapper');
-                    if (postWrapper) {
-                        postWrapper.addEventListener('pointerdown', () => setPause(true));
-                        postWrapper.addEventListener('pointerup', () => setPause(false));
-                        postWrapper.addEventListener('pointercancel', () => setPause(false));
-                        postWrapper.addEventListener('pointerleave', () => setPause(false));
-                    }
-                }
+                initPostCarousel(currentFeedIndex);
                 
                 const postAuthor = wrapper.children[currentFeedIndex]?.querySelector('.author-name')?.textContent;
                 updateSeoTitleDynamic(postAuthor);
@@ -1203,6 +1210,7 @@
                 const initPostId = posts[currentFeedIndex].id;
                 startFloatingComments(initPostId);
                 markPostAsSeen(initPostId);
+                initPostCarousel(currentFeedIndex);
             }, 50);
         };
 
@@ -1547,6 +1555,8 @@
                     startFloatingComments(initPostId);
                     markPostAsSeen(initPostId); 
                 }
+                
+                initPostCarousel(currentFeedIndex);
 
             } catch(e) { 
                 console.error(e);
