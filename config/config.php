@@ -1,12 +1,6 @@
 <?php
 declare(strict_types=1);
 
-/**
- * Конфигурация приложения.
- * Этот файл подключается первым: задаёт security-заголовки, загружает .env
- * и определяет параметры окружения (БД, сторонние интеграции).
- */
-
 if (!headers_sent()) {
     header("X-Frame-Options: DENY");
     header("X-Content-Type-Options: nosniff");
@@ -16,9 +10,6 @@ if (!headers_sent()) {
     header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; img-src 'self' data: blob: https: http:; connect-src 'self' https: wss:; frame-src 'self' https://challenges.cloudflare.com; frame-ancestors 'none'; form-action 'self';");
 }
 
-/**
- * Простейший загрузчик .env. Чтение KEY=VALUE, поддержка комментариев (#).
- */
 if (!function_exists('load_env')) {
 function load_env(string $path): void {
     if (!is_file($path)) return;
@@ -42,9 +33,6 @@ function load_env(string $path): void {
 load_env(__DIR__ . '/../.env');
 if (is_file(__DIR__ . '/../.env.local')) load_env(__DIR__ . '/../.env.local');
 
-/**
- * Хелпер получения значения окружения с запасным значением по умолчанию.
- */
 if (!function_exists('env')) {
 function env(string $key, string $default = ''): string {
     $v = $_ENV[$key] ?? (getenv($key) ?: '');

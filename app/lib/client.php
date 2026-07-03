@@ -1,14 +1,6 @@
 <?php
 declare(strict_types=1);
 
-/**
- * Получение реального IP-адреса клиента.
- *
- * Приложение находится за Cloudflare/реверс-прокси, поэтому REMOTE_ADDR часто
- * содержит внутренний адрес прокси (например 127.0.0.x). Заголовок
- * CF-Connecting-IP — авторитетный источник реального IP пользователя при
- * работе через Cloudflare; далее страхуемся X-Forwarded-For.
- */
 function getClientIp(): string {
     $candidates = [];
 
@@ -27,15 +19,20 @@ function getClientIp(): string {
 
     $candidates[] = $_SERVER['REMOTE_ADDR'] ?? '';
 
+    $ipv4 = '';
+    $ipv6 = '';
     foreach ($candidates as $ip) {
         $ip = trim($ip);
         if ($ip === '') continue;
-        // Пропускаем явно локальные/технические адреса, если есть более подходящий.
-        if (filter_var($ip, FILTER_VALIDATE_IP)) {
-            return $ip;
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+            $ipv4 = $ip;
+            break;
+        }
+        if ($ipv6 === '' && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+            $ipv6 = $ip;
         }
     }
-    return '0.0.0.0';
+    return $ipv4 ?: ($ipv6 ?: '0.0.0.0');
 }
 
 /**

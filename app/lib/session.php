@@ -1,10 +1,6 @@
 <?php
 declare(strict_types=1);
 
-/**
- * Управление сессиями пользователей.
- */
-
 function createSession($userId) {
     global $pdo;
     $token = bin2hex(random_bytes(64));

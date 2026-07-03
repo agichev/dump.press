@@ -1,13 +1,6 @@
 <?php
 declare(strict_types=1);
 
-/**
- * Безопасность: проверка Cloudflare Turnstile.
- *
- * Капча показывается в модалке при входе/регистрации. Токен проверяется
- * серверной стороной через siteverify. Если секрет не сконфигурирован
- * (например локальная разработка) — проверка пропускается.
- */
 function verifyTurnstile(?string $token, string $remoteIp): bool {
     $secret = $GLOBALS['TURNSTILE_SECRET_KEY'] ?? '';
     $site   = $GLOBALS['TURNSTILE_SITE_KEY'] ?? '';

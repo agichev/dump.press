@@ -1,10 +1,6 @@
 <?php
 declare(strict_types=1);
 
-/**
- * TOTP (RFC 6238) для 2FA через приложение-аутентификатор.
- */
-
 function generateBase32Secret($length = 16) {
     $chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
     $secret = '';

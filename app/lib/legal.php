@@ -1,13 +1,6 @@
 <?php
 declare(strict_types=1);
 
-/**
- * Юридические документы (Политика конфиденциальности, Правила).
- *
- * Хранятся как .md в /docs и рендерятся в HTML для красивой модалки чтения,
- * а также доступны по собственному URL (/legal/<slug>) для SEO и прямых ссылок.
- */
-
 function legalDocs(): array {
     return [
         'privacy-policy' => [
@@ -37,11 +30,7 @@ function getLegalDoc(string $slug): ?array {
     ];
 }
 
-/**
- * Минимальный, безопасный рендерер Markdown для доверенных .md файлов проекта.
- * Поддерживает: заголовки, жирный/курсив, ссылки, списки, цитаты, горизонтальные
- * линии, абзацы и переносы строк.
- */
+/** @param string $md */
 function renderLegalMarkdown(string $md): string {
     $md = str_replace("\r\n", "\n", $md);
     $lines = explode("\n", $md);
@@ -98,7 +87,6 @@ function renderLegalMarkdown(string $md): string {
     return $html;
 }
 
-/** Инлайн-форматирование + экранирование. */
 function mdInline(string $text): string {
     $text = htmlspecialchars($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     // Ссылки [текст](url)

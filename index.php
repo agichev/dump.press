@@ -2,10 +2,6 @@
 require __DIR__ . '/config/config.php';
 require __DIR__ . '/app/bootstrap.php';
 
-/* ----------------------------------------------------------------------
- |  Sitemap / robots — генерируются на лету из БД (хостинг не позволяет
- |  держать статический sitemap.xml, поэтому отдаём динамически).
- | --------------------------------------------------------------------- */
 $req_path_raw = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $base_path = rtrim(dirname($_SERVER['SCRIPT_NAME']), '\\/');
 $_req = $req_path_raw;
@@ -21,9 +17,6 @@ if ($_req === 'sitemap.xml' || isset($_GET['sitemap'])) {
     outputSitemapXml();
 }
 
-/* ----------------------------------------------------------------------
- |  API
- | --------------------------------------------------------------------- */
 if (isset($_GET['api'])) {
     require __DIR__ . '/app/api.php';
     exit;
@@ -31,9 +24,6 @@ if (isset($_GET['api'])) {
 
 $path_parts = explode('/', $_req);
 
-/* ----------------------------------------------------------------------
- |  SEO + предрендер юридических документов при прямом заходе на /legal/*
- | --------------------------------------------------------------------- */
 $turnstile_site_key   = $GLOBALS['TURNSTILE_SITE_KEY'] ?? '';
 $turnstile_secret_key = $GLOBALS['TURNSTILE_SECRET_KEY'] ?? '';
 $turnstile_enabled    = $turnstile_site_key !== '' && $turnstile_secret_key !== '';
@@ -247,7 +237,7 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
                     <label for="regPassword" class="vc-label">Пароль</label>
                 </div>
                 <button type="submit" class="vc-btn">Создать аккаунт</button>
-                <p class="legal-consent" style="color:#444;font-size:0.72rem;margin-bottom:0.75rem;border:none;padding:0;line-height:1.4;text-align:center">
+                <p class="legal-consent" style="color:#444;font-size:0.72rem;margin:0.75rem 0;border:none;padding:0;line-height:1.4;text-align:center">
                     Нажимая «Создать аккаунт», вы соглашаетесь с
                     <a class="legal-link" href="#" onclick="event.preventDefault();openLegal('rules')" style="color:#555;font-size:0.72rem">Правилами</a> и
                     <a class="legal-link" href="#" onclick="event.preventDefault();openLegal('privacy-policy')" style="color:#555;font-size:0.72rem">Политикой конфиденциальности</a>.
@@ -488,7 +478,7 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
             </div>
             <p class="text-muted text-sm mb-6">Так мы защищаем Dump от ботов и спама.</p>
             <div id="captchaWidget" class="flex justify-center items-center mb-4" style="min-height: 70px;"></div>
-            <div id="captchaLoading" class="text-muted text-sm"><i class="ph ph-circle-notch spin"></i> Загрузка капчи…</div>
+            <div id="captchaLoading" class="text-muted text-sm hidden"><i class="ph ph-circle-notch spin"></i></div>
         </div>
     </div>
 

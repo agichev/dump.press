@@ -1,15 +1,6 @@
 <?php
 declare(strict_types=1);
 
-/**
- * Динамические sitemap.xml и robots.txt.
- *
- * Хостинг не позволяет редактировать собственные файлы сервиса, поэтому
- * классический статический sitemap.xml недоступен. Эти документы генерируются
- * «на лету» прямо из БД при обращении к /sitemap.xml и /robots.txt
- * (все маршруты падают на index.php, поэтому endpoint отдаётся корректно).
- */
-
 function app_base_url(): string {
     $base = $GLOBALS['APP_URL'] ?? '';
     if ($base) return $base;

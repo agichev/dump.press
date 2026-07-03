@@ -1,9 +1,6 @@
 <?php
 declare(strict_types=1);
 
-/**
- * Транзакционная почта через Resend (коды 2FA).
- */
 function sendResendEmail($to, $subject, $code) {
     $apiKey = $GLOBALS['RESEND_API_KEY'] ?? '';
     if (!$apiKey) return false;

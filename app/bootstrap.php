@@ -1,11 +1,6 @@
 <?php
 declare(strict_types=1);
 
-/**
- * Сборка приложения: подключение БД и регистрация всех библиотек.
- * Точка подключения — index.php.
- */
-
 require_once __DIR__ . '/database.php';
 
 require_once __DIR__ . '/lib/client.php';
