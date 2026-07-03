@@ -113,7 +113,7 @@ try {
                     $code = '';
 
                     if ($user['tfa_method'] === 'email') {
-                        $code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+                        $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
                         sendResendEmail($user['email'], "Код входа: $code", $code);
                     }
 
@@ -216,7 +216,7 @@ try {
 
                 echo json_encode(['success' => true, 'temp_token' => $tempToken, 'secret' => $secret, 'qr_url' => $qrUrl]);
             } else {
-                $code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+                $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
                 $stmt = $pdo->prepare("INSERT INTO temp_auth (token, user_id, code, type, expires_at) VALUES (?, ?, ?, 'setup_email', DATE_ADD(NOW(), INTERVAL 15 MINUTE))");
                 $stmt->execute([$tempToken, $current_session['user_id'], $code]);
 

@@ -43,7 +43,7 @@ function verifyTOTP($secret, $code) {
             (ord($hash[$offset+3]) & 0xFF)
         ) % 1000000;
 
-        if (str_pad($calc, 6, '0', STR_PAD_LEFT) === $code) return true;
+        if (str_pad((string)$calc, 6, '0', STR_PAD_LEFT) === $code) return true;
     }
     return false;
 }
