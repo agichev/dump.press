@@ -1,25 +1,47 @@
 <?php
-require __DIR__ . '/config.php';
-require __DIR__ . '/database.php';
-require __DIR__ . '/functions.php';
+require __DIR__ . '/config/config.php';
+require __DIR__ . '/app/bootstrap.php';
 
+/* ----------------------------------------------------------------------
+ |  Sitemap / robots — генерируются на лету из БД (хостинг не позволяет
+ |  держать статический sitemap.xml, поэтому отдаём динамически).
+ | --------------------------------------------------------------------- */
+$req_path_raw = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$base_path = rtrim(dirname($_SERVER['SCRIPT_NAME']), '\\/');
+$_req = $req_path_raw;
+if ($base_path && strpos($_req, $base_path) === 0) {
+    $_req = substr($_req, strlen($base_path));
+}
+$_req = trim($_req, '/');
+
+if ($_req === 'robots.txt') {
+    outputRobotsTxt();
+}
+if ($_req === 'sitemap.xml' || isset($_GET['sitemap'])) {
+    outputSitemapXml();
+}
+
+/* ----------------------------------------------------------------------
+ |  API
+ | --------------------------------------------------------------------- */
 if (isset($_GET['api'])) {
-    require __DIR__ . '/api.php';
+    require __DIR__ . '/app/api.php';
     exit;
 }
 
-$req_path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-$base_path = rtrim(dirname($_SERVER['SCRIPT_NAME']), '\\/');
-if ($base_path && strpos($req_path, $base_path) === 0) {
-    $req_path = substr($req_path, strlen($base_path));
-}
-$req_path = trim($req_path, '/');
-$path_parts = explode('/', $req_path);
+$path_parts = explode('/', $_req);
+
+/* ----------------------------------------------------------------------
+ |  SEO + предрендер юридических документов при прямом заходе на /legal/*
+ | --------------------------------------------------------------------- */
+$turnstile_site_key = $GLOBALS['TURNSTILE_SITE_KEY'] ?? '';
+$turnstile_enabled  = $turnstile_site_key !== '';
 
 $random_titles = ["Dump", "Настоящий Dump"];
 $seo_title = $random_titles[array_rand($random_titles)];
 $seo_desc = "Dump — это место, где ты можешь делиться фотографиями, мыслями и находить крутой контент от других людей.";
 $seo_image = "https://ui-avatars.com/api/?name=D&background=000&color=fff&size=512";
+$legal_prerender = ['slug' => '', 'title' => '', 'html' => ''];
 
 try {
     if (isset($path_parts[0]) && $path_parts[0] === 'post' && !empty($path_parts[1])) {
@@ -49,47 +71,73 @@ try {
                 $seo_image = trim($user['avatar_url']);
             }
         }
+    } elseif (isset($path_parts[0]) && $path_parts[0] === 'legal' && !empty($path_parts[1])) {
+        $doc = getLegalDoc(preg_replace('/[^a-z0-9-]/', '', $path_parts[1]));
+        if ($doc) {
+            $legal_prerender = $doc;
+            $seo_title = $doc['title'] . " | Dump";
+            $plain = trim(preg_replace('/\s+/', ' ', strip_tags($doc['html'])));
+            $seo_desc = $plain ? (mb_substr($plain, 0, 150) . '...') : $doc['title'];
+        }
     }
 } catch (Exception $e) {}
 
 $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
 ?>
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title><?= htmlspecialchars($seo_title, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></title>
-    
+
     <meta name="description" content="<?= htmlspecialchars($seo_desc, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
     <meta property="og:title" content="<?= htmlspecialchars($seo_title, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
     <meta property="og:description" content="<?= htmlspecialchars($seo_desc, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
     <meta property="og:image" content="<?= htmlspecialchars($seo_image, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
     <meta property="og:type" content="website">
     <meta name="twitter:card" content="summary_large_image">
-    
+    <link rel="canonical" href="<?= htmlspecialchars(app_base_url() . '/' . $_req, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
+
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%23000000'/><text x='50' y='55' dominant-baseline='middle' text-anchor='middle' font-size='76' font-family='-apple-system, BlinkMacSystemFont, sans-serif' font-weight='800' fill='%23ffffff'>D</text></svg>">
 
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    
+
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-    
+
     <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css">
+
+    <?php if ($turnstile_enabled): ?>
+    <script>
+        window.__turnstileReady = false;
+        window.__captchaPending = false;
+        window.turnstileOnLoad = function() {
+            window.__turnstileReady = true;
+            if (window.__captchaPending && typeof renderTurnstile === 'function') {
+                window.__captchaPending = false;
+                renderTurnstile();
+            }
+        };
+    </script>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=turnstileOnLoad&render=explicit" async defer></script>
+    <?php endif; ?>
 </head>
 <body>
     <script>
         const BASE_PATH = '<?php echo rtrim(dirname($_SERVER["SCRIPT_NAME"]), "\\/"); ?>';
         const apiCall = (action) => BASE_PATH + '/index.php?api=' + action;
         const MAX_FILE_SIZE = 5 * 1024 * 1024;
-        
+
+        const TURNSTILE_ENABLED = <?php echo $turnstile_enabled ? 'true' : 'false'; ?>;
+        window.TurnstileSiteKey = '<?php echo htmlspecialchars($turnstile_site_key, ENT_QUOTES | ENT_HTML5, 'UTF-8'); ?>';
+
         const getProxyUrl = (url) => {
             if (!url) return '';
             if (url.includes('/index.php?api=proxy')) return url;
-            try { return BASE_PATH + '/index.php?api=proxy&url=' + btoa(url); } 
+            try { return BASE_PATH + '/index.php?api=proxy&url=' + btoa(url); }
             catch(e) { return url; }
         };
 
@@ -129,12 +177,19 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
     </script>
     <div id="toastContainer"></div>
 
+    <?php if ($legal_prerender['html'] !== ''): ?>
+    <div id="legalCache-<?= htmlspecialchars($legal_prerender['slug'], ENT_QUOTES) ?>"
+         data-title="<?= htmlspecialchars($legal_prerender['title'], ENT_QUOTES) ?>"
+         data-html="<?= htmlspecialchars($legal_prerender['html'], ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>"
+         style="display:none;"></div>
+    <?php endif; ?>
+
     <div id="mainNav" class="nav-bar">
         <div class="flex items-center gap-2">
             <button id="navBackBtn" class="icon-btn hidden" onclick="window.history.back()"><i class="ph ph-arrow-left"></i></button>
             <h1 class="nav-brand dump-logo" id="navLogo" onclick="goHome()">Dump</h1>
         </div>
-        
+
         <div class="nav-tabs hidden" id="feedTabs">
             <div id="tabIndicator" class="tab-indicator"></div>
             <button onclick="setFeedType('all')" id="tab-all" class="nav-tab active">Глобально</button>
@@ -167,6 +222,11 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
                     <button type="button" class="vc-btn-text" onclick="navigate('/register')">У меня еще нет аккаунта</button>
                 </div>
             </form>
+            <div class="auth-footer-links">
+                <a class="legal-link" onclick="event.preventDefault();openLegal('rules')">Правила</a>
+                <span class="text-muted">·</span>
+                <a class="legal-link" onclick="event.preventDefault();openLegal('privacy-policy')">Политика конфиденциальности</a>
+            </div>
         </div>
     </div>
 
@@ -185,7 +245,12 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
                     <input type="password" name="password" id="regPassword" class="vc-input" placeholder=" " required minlength="6" autocomplete="new-password">
                     <label for="regPassword" class="vc-label">Пароль</label>
                 </div>
-                <button type="submit" class="vc-btn mb-4">Создать аккаунт</button>
+                <button type="submit" class="vc-btn mb-3">Создать аккаунт</button>
+                <p class="legal-consent text-muted">
+                    Нажимая «Создать аккаунт», вы соглашаетесь с
+                    <a class="legal-link" href="#" onclick="event.preventDefault();openLegal('rules')">Правилами</a> и
+                    <a class="legal-link" href="#" onclick="event.preventDefault();openLegal('privacy-policy')">Политикой конфиденциальности</a>.
+                </p>
                 <div class="text-center">
                     <button type="button" class="vc-btn-text" onclick="navigate('/login')">Я уже зарегистрирован</button>
                 </div>
@@ -237,7 +302,7 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
                 <h2 class="font-bold" style="font-size:1.5rem;">Настройки</h2>
                 <button type="button" onclick="closeModal('settingsModal')" style="color:var(--text-muted);"><i class="ph ph-x" style="font-size:1.4rem;"></i></button>
             </div>
-            
+
             <div class="settings-tabs">
                 <button class="settings-tab active" id="tabBtnProfile" onclick="switchSettingsTab('profile')">Профиль</button>
                 <button class="settings-tab" id="tabBtnAccount" onclick="switchSettingsTab('account')">Аккаунт</button>
@@ -271,14 +336,14 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
                         <input type="email" id="accEmail" class="vc-input" placeholder=" " required data-name="Email">
                         <label class="vc-label">Email</label>
                     </div>
-                    
+
                     <div style="border-top: 1px solid var(--surface-hover); border-bottom: 1px solid var(--surface-hover); margin: 1rem 0 1.5rem; padding: 1rem 0; display:flex; flex-direction:column; gap:0.5rem;">
                         <button type="button" class="vc-btn-outline w-full flex justify-between items-center" style="border: none; padding: 0.5rem; font-weight: 500;" onclick="openPasswordModal()">
-                            <span class="flex items-center gap-2"><i class="ph ph-lock-key" style="font-size:1.2rem;"></i> Изменить пароль</span> 
+                            <span class="flex items-center gap-2"><i class="ph ph-lock-key" style="font-size:1.2rem;"></i> Изменить пароль</span>
                             <i class="ph ph-caret-right text-muted"></i>
                         </button>
                         <button type="button" class="vc-btn-outline w-full flex justify-between items-center" style="border: none; padding: 0.5rem; font-weight: 500;" onclick="openTfaSettingsModal()">
-                            <span class="flex items-center gap-2"><i class="ph ph-shield-check" style="font-size:1.2rem;"></i> Настройка 2FA</span> 
+                            <span class="flex items-center gap-2"><i class="ph ph-shield-check" style="font-size:1.2rem;"></i> Настройка 2FA</span>
                             <div class="flex items-center gap-2">
                                 <span id="tfaStatusBadge" style="font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; background: var(--surface-hover); color: var(--text-muted);">Выкл</span>
                                 <i class="ph ph-caret-right text-muted"></i>
@@ -295,6 +360,12 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
                     <div class="loader-screen"><i class="ph ph-circle-notch spin" style="font-size: 2.5rem; color: var(--text-muted);"></i></div>
                 </div>
                 <button type="button" onclick="showConfirm('Выход', 'Точно выйти из текущего аккаунта?', logout)" class="vc-btn vc-btn-outline w-full" style="color:var(--error); border-color:rgba(255,42,95,0.3);">Выйти из текущего аккаунта</button>
+            </div>
+
+            <div class="auth-footer-links" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--surface-hover);">
+                <a class="legal-link" onclick="event.preventDefault();openLegal('rules')">Правила</a>
+                <span class="text-muted">·</span>
+                <a class="legal-link" onclick="event.preventDefault();openLegal('privacy-policy')">Политика конфиденциальности</a>
             </div>
         </div>
     </div>
@@ -329,8 +400,8 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
                 <h3 class="font-bold flex items-center gap-2" style="font-size:1.3rem;"><i class="ph-fill ph-shield-check"></i> Двухфакторная аутентификация</h3>
                 <button type="button" onclick="closeModal('tfaSettingsModal')" style="color:var(--text-muted);"><i class="ph ph-x" style="font-size:1.4rem;"></i></button>
             </div>
-            
-            <div class="flex justify-between items-center p-4 mb-4" style="background: var(--surface-elevated); border-radius: var(--radius-md);">
+
+            <div class="flex justify-between p-4 mb-4" style="background: var(--surface-elevated); border-radius: var(--radius-md);">
                 <div>
                     <div class="font-bold mb-1">Использовать 2FA</div>
                     <div class="text-xs text-muted">Дополнительная защита аккаунта</div>
@@ -352,7 +423,7 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
                         <span>Приложение</span>
                     </label>
                 </div>
-                
+
                 <div id="tfaPreviewEmail" class="text-center p-4 mb-4" style="background: var(--surface-elevated); border-radius: var(--radius-md);">
                     <i class="ph ph-envelope-simple text-muted mb-2" style="font-size:2.5rem;"></i>
                     <p class="text-sm text-muted">Мы будем отправлять 6-значный код на ваш email при каждом входе в аккаунт.</p>
@@ -365,7 +436,7 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
 
                 <button id="tfaStartSetupBtn" class="vc-btn" onclick="startTfaSetup()">Продолжить</button>
             </div>
-            
+
             <div id="tfaVerifyContainer" class="hidden smooth-fade-in">
                 <div id="tfaAppQrContainer" class="hidden flex flex-col items-center mb-4 p-4" style="background: var(--surface-elevated); border-radius: var(--radius-md);">
                     <p class="text-sm text-center mb-3">Отсканируйте этот QR-код в приложении аутентификаторе:</p>
@@ -405,6 +476,28 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
                 <button type="submit" id="tfaLoginBtn" class="vc-btn w-full">Войти</button>
                 <button type="button" class="vc-btn-text w-full mt-4" onclick="cancelTfaLogin()">Отмена</button>
             </form>
+        </div>
+    </div>
+
+    <div id="captchaModal" class="modal-overlay" style="z-index: 300;" onclick="if(event.target.id==='captchaModal') cancelCaptcha()">
+        <div class="modal-content text-center" style="max-width: 400px;">
+            <div class="flex justify-between items-center mb-2">
+                <h3 class="font-bold" style="font-size:1.2rem;">Подтвердите, что вы человек</h3>
+                <button type="button" onclick="cancelCaptcha()" style="color:var(--text-muted);"><i class="ph ph-x" style="font-size:1.4rem;"></i></button>
+            </div>
+            <p class="text-muted text-sm mb-6">Так мы защищаем Dump от ботов и спама.</p>
+            <div id="captchaWidget" class="flex justify-center items-center mb-4" style="min-height: 70px;"></div>
+            <div id="captchaLoading" class="text-muted text-sm"><i class="ph ph-circle-notch spin"></i> Загрузка капчи…</div>
+        </div>
+    </div>
+
+    <div id="legalModal" class="modal-overlay" onclick="if(event.target.id==='legalModal') closeLegal()">
+        <div class="modal-content" style="max-width: 680px; max-height: 90vh; display:flex; flex-direction:column;">
+            <div class="flex justify-between items-center" style="padding-bottom: 1rem; border-bottom: 1px solid var(--surface-hover); margin-bottom: 1rem;">
+                <h2 id="legalTitle" class="font-bold" style="font-size:1.3rem;">Загрузка…</h2>
+                <button type="button" onclick="closeLegal()" style="color:var(--text-muted);"><i class="ph ph-x" style="font-size:1.4rem;"></i></button>
+            </div>
+            <div id="legalBody" class="legal-body"></div>
         </div>
     </div>
 
@@ -451,12 +544,12 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
                 <h2 class="font-bold" style="font-size:1.6rem;">Новый пост</h2>
                 <button type="button" onclick="closeCreatePost()" style="color:var(--text-muted);"><i class="ph ph-x" style="font-size:1.6rem;"></i></button>
             </div>
-            
+
             <form id="createPostForm" onsubmit="handleCreatePostSubmit(event)" novalidate>
                 <input id="postImageUpload" type="file" multiple class="hidden" accept="image/png, image/jpeg, image/gif, image/webp" onchange="handleMultiplePostImages(event)" />
-                
+
                 <div id="multiImagePreviewContainer" class="hidden"></div>
-                
+
                 <div id="uploadZone" class="mb-4">
                     <label id="uploadLabel" class="flex flex-col items-center justify-center" style="height:80px; background:var(--surface-elevated); border-radius:var(--radius-md); cursor:pointer; transition:var(--transition);"
                            ondragover="event.preventDefault(); this.style.backgroundColor='var(--surface-active)';"
@@ -469,7 +562,7 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
                         </div>
                     </label>
                 </div>
-                
+
                 <div class="input-group">
                     <textarea id="postContent" class="vc-input auto-resize" placeholder=" " style="min-height: 140px; resize:none; padding-top:24px; font-size:1.1rem;" oninput="resizeTextarea(this)"></textarea>
                     <label class="vc-label">Напишите что-нибудь</label>
@@ -485,33 +578,33 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
                 <h3 class="font-bold" style="font-size:1.1rem;">Комментарии</h3>
                 <button type="button" onclick="closeModal('commentsModal')" style="color:var(--text-muted);"><i class="ph ph-caret-down" style="font-size:1.4rem;"></i></button>
             </div>
-            
+
             <div id="commentsList" class="comments-list smooth-fade-in"></div>
-            
+
             <form onsubmit="sendComment(event)" class="comment-input-area" novalidate>
                 <div id="replyingToIndicator" class="hidden" style="width: 100%; padding: 10px 16px; margin-bottom: 12px; background-color: var(--surface-elevated); border-radius: 12px; font-size: 0.85rem; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--surface-hover);">
                     <div class="flex items-center gap-2">
-                        <i class="ph ph-arrow-u-down-left" style="font-size: 1.1rem;"></i> 
+                        <i class="ph ph-arrow-u-down-left" style="font-size: 1.1rem;"></i>
                         <span>В ответ <b id="replyingToName" style="color: white; margin-left: 2px;"></b></span>
                     </div>
                     <button type="button" onclick="cancelReply()" style="color: var(--text-muted); font-size: 1.2rem; display: flex; align-items: center; justify-content: center; transition: color 0.2s;" onmouseover="this.style.color='white'" onmouseout="this.style.color='var(--text-muted)'">
                         <i class="ph ph-x"></i>
                     </button>
                 </div>
-                
+
                 <div id="commentImagePreviewContainer" class="hidden w-full mb-3 relative">
                     <div style="position: relative; display: inline-block;">
                         <img id="commentImagePreview" src="" style="max-height: 140px; border-radius: 12px; object-fit: contain; background: black;">
                         <button type="button" onclick="clearCommentImage()" style="position: absolute; top: -8px; right: -8px; background: var(--surface-elevated); color: white; border-radius: 50%; padding: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); border: 1px solid var(--surface-hover);"><i class="ph ph-x"></i></button>
                     </div>
                 </div>
-                
+
                 <div class="comment-input-wrapper">
                     <button type="button" onclick="document.getElementById('commentImageUpload').click()" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: var(--text-muted); transition: 0.2s;"><i class="ph ph-plus-circle"></i></button>
                     <input type="file" id="commentImageUpload" class="hidden" accept="image/png, image/jpeg, image/gif, image/webp" onchange="handleCommentImage(event)">
-                    
+
                     <textarea id="commentInput" placeholder="Добавить комментарий..." autocomplete="off" rows="1" oninput="resizeTextarea(this)"></textarea>
-                    
+
                     <button type="submit" id="sendCommentBtn" style="width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: var(--accent-bg); display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0; padding-left: 4px;"><i class="ph-fill ph-paper-plane-right"></i></button>
                 </div>
             </form>

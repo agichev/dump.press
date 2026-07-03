@@ -322,3 +322,43 @@
         .radio-label input:checked + span { color: var(--accent); }
         .radio-label:has(input:checked) { border-color: var(--accent); background: rgba(255,255,255,0.05); }
 
+        /* ---- Юридические ссылки / согласие при регистрации ---- */
+        .legal-link { color: var(--text-muted); font-size: 0.82rem; cursor: pointer; transition: color 0.2s; text-decoration: underline; text-underline-offset: 2px; }
+        .legal-link:hover { color: var(--text-main); }
+        .legal-consent { font-size: 0.78rem; line-height: 1.45; margin-bottom: 1rem; text-align: center; }
+        .legal-consent .legal-link { color: #9aa0a6; }
+        .auth-footer-links { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 1.25rem; }
+
+        /* ---- Капча в модалке ---- */
+        #captchaWidget iframe { border: 0; border-radius: var(--radius-md); overflow: hidden; }
+
+        /* ---- Ссылки в описании профиля (таблетки с фавиконкой) ---- */
+        .profile-bio { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+        .profile-bio br { flex-basis: 100%; height: 0; }
+        .bio-link-pill {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 5px 12px 5px 6px; border-radius: 99px;
+            background: var(--surface-elevated); border: 1px solid var(--surface-hover);
+            color: var(--text-main); font-size: 0.82rem; font-weight: 600;
+            text-decoration: none; max-width: 100%; transition: background 0.2s, transform 0.2s;
+        }
+        .bio-link-pill:hover { background: var(--surface-hover); }
+        .bio-link-pill:active { transform: scale(0.96); }
+        .bio-link-favicon { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--surface-active); }
+        .bio-link-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* ---- Модалка чтения юридических документов ---- */
+        .legal-body { overflow-y: auto; padding: 0 0.25rem 0.5rem; font-size: 0.95rem; line-height: 1.65; color: #d4d4d4; }
+        .legal-body h1 { font-size: 1.5rem; font-weight: 800; color: var(--text-main); margin: 1.5rem 0 0.75rem; }
+        .legal-body h2 { font-size: 1.15rem; font-weight: 700; color: var(--text-main); margin: 1.5rem 0 0.6rem; }
+        .legal-body h3 { font-size: 1rem; font-weight: 700; color: var(--text-main); margin: 1.2rem 0 0.5rem; }
+        .legal-body p { margin: 0.5rem 0; }
+        .legal-body ul, .legal-body ol { margin: 0.5rem 0 0.5rem 1.25rem; }
+        .legal-body li { margin: 0.3rem 0; }
+        .legal-body a { color: #6ea8fe; text-decoration: underline; text-underline-offset: 2px; }
+        .legal-body a:hover { color: #9bc1fe; }
+        .legal-body hr { border: none; border-top: 1px solid var(--surface-hover); margin: 1.25rem 0; }
+        .legal-body blockquote { border-left: 3px solid var(--surface-hover); padding-left: 0.75rem; color: var(--text-muted); margin: 0.75rem 0; }
+        .legal-body code { background: var(--surface-elevated); padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
+        .legal-body strong { color: var(--text-main); }
+

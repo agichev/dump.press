@@ -18,8 +18,64 @@
 
         let tfaLoginTempToken = '';
         let tfaLoginMethod = '';
-        
+
         let tfaSetupTempToken = '';
+
+        let pendingAuth = null;
+        let turnstileWidgetId = null;
+        let captchaToken = '';
+
+        const GUEST_VIEWED_KEY = 'guest_viewed_posts';
+        function getGuestViewed() {
+            try { return JSON.parse(localStorage.getItem(GUEST_VIEWED_KEY) || '[]'); } catch(e) { return []; }
+        }
+        function addGuestViewedPost(id) {
+            if (!id) return;
+            let arr = getGuestViewed();
+            const iid = Number(id);
+            if (arr.includes(iid)) return;
+            arr.push(iid);
+            if (arr.length > 2000) arr = arr.slice(-2000);
+            try { localStorage.setItem(GUEST_VIEWED_KEY, JSON.stringify(arr)); } catch(e) {}
+        }
+
+        function openCaptchaModal() {
+            captchaToken = '';
+            document.getElementById('captchaWidget').innerHTML = '';
+            document.getElementById('captchaLoading').classList.remove('hidden');
+            openModal('captchaModal');
+            if (window.__turnstileReady) {
+                renderTurnstile();
+            } else {
+                window.__captchaPending = true;
+            }
+        }
+        function cancelCaptcha() {
+            closeModal('captchaModal');
+            pendingAuth = null;
+            if (turnstileWidgetId !== null) { try { turnstile.remove(turnstileWidgetId); } catch(e) {} turnstileWidgetId = null; }
+        }
+        function renderTurnstile() {
+            if (!window.turnstile || !window.TurnstileSiteKey) return;
+            if (turnstileWidgetId !== null) { try { turnstile.remove(turnstileWidgetId); } catch(e) {} }
+            document.getElementById('captchaWidget').innerHTML = '';
+            turnstileWidgetId = turnstile.render('#captchaWidget', {
+                sitekey: window.TurnstileSiteKey,
+                theme: 'black',
+                callback: function(token) { captchaToken = token; document.getElementById('captchaLoading').classList.add('hidden'); proceedAfterCaptcha(); },
+                'expired-callback': function() { captchaToken = ''; },
+                'error-callback': function() { captchaToken = ''; showToast('Не удалось загрузить капчу. Обновите страницу.'); }
+            });
+        }
+        function proceedAfterCaptcha() {
+            if (!captchaToken || !pendingAuth) return;
+            const action = pendingAuth.action;
+            const form = pendingAuth.form;
+            pendingAuth = null;
+            closeModal('captchaModal');
+            if (turnstileWidgetId !== null) { try { turnstile.remove(turnstileWidgetId); } catch(e) {} turnstileWidgetId = null; }
+            doAuth(action, form, captchaToken);
+        }
 
         const showToast = (msg) => {
             const container = document.getElementById('toastContainer');
@@ -168,6 +224,15 @@
             if(navBackBtn) navBackBtn.classList.add('hidden');
             if(navLogo) navLogo.classList.remove('hidden');
 
+            if (path.startsWith('/legal/')) {
+                const slug = (path.split('/')[2] || '').trim();
+                if (slug === 'privacy-policy' || slug === 'rules') {
+                    if(nav) nav.classList.remove('visible');
+                    showLegalModal(slug);
+                    return;
+                }
+            }
+
             if (isGuest && !isPostRoute && path !== '/' && path !== '/login' && path !== '/register') {
                 navigate('/login', true);
                 return;
@@ -241,6 +306,59 @@
             else navigate('/', true);
         };
 
+        async function openLegal(slug) {
+            if (slug !== 'privacy-policy' && slug !== 'rules') return;
+            const target = '/legal/' + slug;
+            if (window.location.pathname !== BASE_PATH + target) navigate(target);
+            showLegalModal(slug);
+        }
+        async function showLegalModal(slug) {
+            openModal('legalModal');
+            document.getElementById('legalTitle').textContent = 'Загрузка…';
+            document.getElementById('legalBody').innerHTML = '<div class="loader-screen"><i class="ph ph-circle-notch spin" style="font-size:2.5rem;color:var(--text-muted);"></i></div>';
+
+            // При прямом заходе по URL контент предрендерен сервером.
+            const cacheEl = document.getElementById('legalCache-' + slug);
+            if (cacheEl && cacheEl.getAttribute('data-html')) {
+                renderLegalContent(cacheEl.getAttribute('data-title') || '', cacheEl.getAttribute('data-html'));
+                return;
+            }
+            try {
+                const res = await fetch(apiCall('legal') + '&doc=' + encodeURIComponent(slug));
+                const data = await res.json();
+                if (data.success) renderLegalContent(data.title, data.html);
+                else { document.getElementById('legalTitle').textContent = 'Ошибка'; document.getElementById('legalBody').innerHTML = '<p class="text-muted">Не удалось загрузить документ.</p>'; }
+            } catch(e) { document.getElementById('legalTitle').textContent = 'Ошибка'; document.getElementById('legalBody').innerHTML = '<p class="text-muted">Ошибка соединения.</p>'; }
+        }
+        function renderLegalContent(title, html) {
+            document.getElementById('legalTitle').textContent = title;
+            document.getElementById('legalBody').innerHTML = html;
+        }
+        function closeLegal() {
+            closeModal('legalModal');
+            if (window.history.length > 2) window.history.back();
+            else navigate('/', true);
+        }
+        window.openLegal = openLegal;
+        window.closeLegal = closeLegal;
+
+        // Рендер описания профиля: ссылки превращаются в кликабельные «таблетки» с фавиконкой.
+        function formatBio(bio) {
+            if (!bio) return '';
+            const urlRegex = /(https?:\/\/[^\s<>"']+)/g;
+            let html = bio;
+            html = html.replace(urlRegex, (url) => {
+                let host;
+                try { host = new URL(url).hostname.replace(/^www\./, ''); } catch(e) { host = url; }
+                const fav = 'https://www.google.com/s2/favicons?domain=' + encodeURIComponent(host) + '&sz=64';
+                return '<a class="bio-link-pill" href="' + url + '" target="_blank" rel="noopener noreferrer nofollow" onclick="event.stopPropagation()">' +
+                    '<img class="bio-link-favicon" src="' + fav + '" alt="" onerror="this.style.visibility=\'hidden\'">' +
+                    '<span class="bio-link-text">' + host + '</span></a>';
+            });
+            html = html.replace(/\n/g, '<br>');
+            return html;
+        }
+
         const closeModalOnOutsideClick = (e, modalId, routeBack = false, isCreate = false) => {
             if (e.target.id === modalId) { 
                 if (isCreate) closeCreatePost();
@@ -251,6 +369,10 @@
 
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
+                const legal = document.getElementById('legalModal');
+                if (legal && legal.classList.contains('open')) { closeLegal(); return; }
+                const captcha = document.getElementById('captchaModal');
+                if (captcha && captcha.classList.contains('open')) { cancelCaptcha(); return; }
                 ['postOptionsModal', 'commentsModal', 'settingsModal', 'cropModal', 'searchModal', 'passwordModal', 'confirmModal', 'textWarningModal', 'tfaSettingsModal', 'tfaLoginModal'].forEach(id => {
                     const m = document.getElementById(id);
                     if(m && m.classList.contains('open')) closeModal(id);
@@ -264,26 +386,38 @@
             e.preventDefault();
             const form = e.target;
             if (!validateFormFields(form)) return;
+            if (isProcessing) return;
 
+            // Капча Cloudflare Turnstile показывается в модалке.
+            if (typeof TURNSTILE_ENABLED !== 'undefined' && TURNSTILE_ENABLED) {
+                pendingAuth = { action, form };
+                openCaptchaModal();
+                return;
+            }
+            await doAuth(action, form, '');
+        }
+
+        async function doAuth(action, form, turnstileToken) {
             if (isProcessing) return;
             isProcessing = true;
-            
+
             const fd = new FormData(form);
             fd.append('csrf_token', csrfToken || '');
-            
+            if (turnstileToken) fd.append('turnstile_token', turnstileToken);
+
             const btn = setFormState(form, true);
             const origText = btn.textContent;
             btn.innerHTML = '<i class="ph ph-spinner spin"></i>';
-            
+
             try {
-                const res = await fetch(`?api=${action}`, { method: 'POST', body: fd });
+                const res = await fetch(apiCall(action), { method: 'POST', body: fd });
                 const data = await res.json();
-                
+
                 if (data.success) {
                     if (data.require_2fa) {
                         tfaLoginTempToken = data.temp_token;
                         tfaLoginMethod = data.method;
-                        
+
                         const icon = document.getElementById('tfaLoginIcon');
                         const desc = document.getElementById('tfaLoginDesc');
                         if (tfaLoginMethod === 'email') {
@@ -293,16 +427,16 @@
                             icon.className = 'ph ph-device-mobile mb-4';
                             desc.textContent = 'Введите код из приложения (Authenticator).';
                         }
-                        
+
                         document.getElementById('tfaLoginCode').value = '';
                         openModal('tfaLoginModal', 'tfaLoginCode');
                     } else {
                         form.reset();
-                        await init(); 
+                        await init();
                         navigate('/', true);
                     }
                 } else showToast(data.error || 'Ошибка');
-            } catch (err) { showToast('Ошибка соединения'); } 
+            } catch (err) { showToast('Ошибка соединения'); }
             finally { btn.textContent = origText; setFormState(form, false); isProcessing = false; }
         }
 
@@ -505,11 +639,15 @@
         }
 
         function markPostAsSeen(postId) {
-            if (!currentUser || !postId) return;
-            const fd = new FormData(); 
-            fd.append('post_id', postId); 
-            fd.append('csrf_token', csrfToken);
-            fetch(apiCall('mark_seen'), { method: 'POST', body: fd, keepalive: true }).catch(()=>{});
+            if (!postId) return;
+            if (currentUser) {
+                const fd = new FormData();
+                fd.append('post_id', postId);
+                fd.append('csrf_token', csrfToken);
+                fetch(apiCall('mark_seen'), { method: 'POST', body: fd, keepalive: true }).catch(()=>{});
+            } else {
+                addGuestViewedPost(postId);
+            }
         }
 
         const feedViewEl = document.getElementById('feedView');
@@ -1117,7 +1255,7 @@
                         <img src="${avatarUrl}" class="profile-avatar">
                         <div class="w-full">
                             <h2 class="font-bold" style="font-size:1.4rem;">@${p.username}</h2>
-                            <p class="text-muted" style="margin: 6px 0 10px; font-size: 0.95rem; line-height: 1.4; word-break: break-word;">${p.bio || 'Нет информации.'}</p>
+                            <div class="profile-bio" style="margin: 6px 0 10px; font-size: 0.95rem; line-height: 1.5; word-break: break-word;">${formatBio(p.bio) || 'Нет информации.'}</div>
                             <div style="display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 6px 12px; border-radius: 99px; background-color: var(--surface-hover); color: var(--text-muted); font-size: 0.8rem; font-weight: 500; margin-bottom: 1.5rem;"><i class="ph ph-calendar-blank"></i> ${joinStr}</div>
                             <div class="mb-4">${actionBtnHTML}</div>
                             <div class="profile-stats">
@@ -1328,7 +1466,12 @@
             }
             
             try {
-                const res = await fetch(apiCall('posts') + `&type=${activeFeedType}&slug=${currentSlug}`);
+                let excludeParam = '';
+                if (!currentUser) {
+                    const viewed = getGuestViewed();
+                    if (viewed.length) excludeParam = '&exclude=' + viewed.slice(-500).join(',');
+                }
+                const res = await fetch(apiCall('posts') + `&type=${activeFeedType}&slug=${currentSlug}${excludeParam}`);
                 const data = await res.json();
                 
                 if (data.error) throw new Error(data.error);

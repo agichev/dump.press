@@ -1,0 +1,16 @@
+# Окружение / секреты
+.env
+.env.local
+.env.*.local
+
+# Зависимости
+/vendor/
+/node_modules/
+
+# Временные файлы / IDE
+*.log
+*.cache
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
