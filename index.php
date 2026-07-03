@@ -478,7 +478,6 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
             </div>
             <p class="text-muted text-sm mb-6">Так мы защищаем Dump от ботов и спама.</p>
             <div id="captchaWidget" class="flex justify-center items-center mb-4" style="min-height: 70px;"></div>
-            <div id="captchaLoading" class="text-muted text-sm hidden"><i class="ph ph-circle-notch spin"></i></div>
         </div>
     </div>
 

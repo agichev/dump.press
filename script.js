@@ -42,7 +42,6 @@
         function openCaptchaModal() {
             captchaToken = '';
             document.getElementById('captchaWidget').innerHTML = '';
-            document.getElementById('captchaLoading').classList.remove('hidden');
             openModal('captchaModal');
             if (window.__turnstileReady) {
                 renderTurnstile();
@@ -62,7 +61,7 @@
             turnstileWidgetId = turnstile.render('#captchaWidget', {
                 sitekey: window.TurnstileSiteKey,
                 theme: 'dark',
-                callback: function(token) { captchaToken = token; document.getElementById('captchaLoading').classList.add('hidden'); proceedAfterCaptcha(); },
+                callback: function(token) { captchaToken = token; proceedAfterCaptcha(); },
                 'expired-callback': function() { captchaToken = ''; },
                 'error-callback': function() { captchaToken = ''; showToast('Не удалось загрузить капчу. Обновите страницу.'); }
             });
