@@ -99,7 +99,7 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 
-    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=4">
+    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=5">
 
     <?php if ($turnstile_enabled): ?>
     <script>
@@ -132,9 +132,9 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
             catch(e) { return url; }
         };
 
-        // Определяем реальный IP клиента через внешнее API (хостинг не передаёт заголовки).
+        // Определяем реальный IPv4 клиента через внешнее API.
         let __clientIp = '';
-        fetch('https://api.ipify.org?format=json').then(r=>r.json()).then(d=>{ if(d.ip) __clientIp = d.ip; }).catch(()=>{});
+        fetch('https://api4.ipify.org?format=json').then(r=>r.json()).then(d=>{ if(d.ip) __clientIp = d.ip; }).catch(()=>{});
 
         function fireConfetti() {
             const colors = ['#ff2a5f', '#f5a623', '#ffffff', '#60a5fa', '#34d399'];
@@ -604,6 +604,6 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
             </form>
         </div>
     </div>
-    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=4"></script>
+    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=5"></script>
 </body>
 </html>
