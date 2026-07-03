@@ -99,7 +99,7 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 
-    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=3">
+    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=4">
 
     <?php if ($turnstile_enabled): ?>
     <script>
@@ -600,6 +600,6 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
             </form>
         </div>
     </div>
-    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=3"></script>
+    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=4"></script>
 </body>
 </html>
