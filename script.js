@@ -386,6 +386,7 @@
             const form = e.target;
             if (!validateFormFields(form)) return;
             if (isProcessing) return;
+            await __waitForIp();
 
             // Капча Cloudflare Turnstile показывается в модалке.
             if (typeof TURNSTILE_ENABLED !== 'undefined' && TURNSTILE_ENABLED) {
