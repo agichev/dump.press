@@ -109,7 +109,7 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 
-    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=2">
+    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=3">
 
     <?php if ($turnstile_enabled): ?>
     <script>
@@ -247,16 +247,14 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
                     <label for="regPassword" class="vc-label">Пароль</label>
                 </div>
                 <button type="submit" class="vc-btn">Создать аккаунт</button>
-                <div class="text-center">
-                    <button type="button" class="vc-btn-text" onclick="navigate('/login')">Я уже зарегистрирован</button>
-                </div>
-            </form>
-            <div class="auth-footer-links" style="flex-direction:column;gap:0">
-                <p class="legal-consent" style="color:#444;font-size:0.72rem;margin-bottom:0;border:none;padding:0;line-height:1.4">
+                <p class="legal-consent" style="color:#444;font-size:0.72rem;margin-bottom:0.75rem;border:none;padding:0;line-height:1.4;text-align:center">
                     Нажимая «Создать аккаунт», вы соглашаетесь с
                     <a class="legal-link" href="#" onclick="event.preventDefault();openLegal('rules')" style="color:#555;font-size:0.72rem">Правилами</a> и
                     <a class="legal-link" href="#" onclick="event.preventDefault();openLegal('privacy-policy')" style="color:#555;font-size:0.72rem">Политикой конфиденциальности</a>.
                 </p>
+            </form>
+            <div class="auth-footer-links">
+                <button type="button" class="vc-btn-text" onclick="navigate('/login')" style="margin-top:0">Я уже зарегистрирован</button>
             </div>
         </div>
     </div>
@@ -613,6 +611,6 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
             </form>
         </div>
     </div>
-    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=2"></script>
+    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=3"></script>
 </body>
 </html>
