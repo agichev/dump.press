@@ -305,6 +305,8 @@
             else navigate('/', true);
         };
 
+        document.getElementById('createView')?.addEventListener('paste', handlePastePostImages);
+
         async function openLegal(slug) {
             if (slug !== 'privacy-policy' && slug !== 'rules') return;
             const target = '/legal/' + slug;
@@ -378,6 +380,13 @@
                 });
                 const create = document.getElementById('createView');
                 if(create && create.classList.contains('open')) closeCreatePost();
+            }
+            
+            if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+                const createView = document.getElementById('createView');
+                if (createView && createView.classList.contains('open')) {
+                    handlePastePostImages(e);
+                }
             }
         });
 
@@ -1321,6 +1330,25 @@
         function handleDropPhotos(e) {
             if(e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                 processPostImageFiles(Array.from(e.dataTransfer.files));
+            }
+        }
+
+        function handlePastePostImages(e) {
+            if (!e.clipboardData || !e.clipboardData.items) return;
+            
+            const items = Array.from(e.clipboardData.items);
+            const files = [];
+            
+            for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                    const file = item.getAsFile();
+                    if (file) files.push(file);
+                }
+            }
+            
+            if (files.length > 0) {
+                e.preventDefault();
+                processPostImageFiles(files);
             }
         }
 
