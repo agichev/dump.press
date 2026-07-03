@@ -326,8 +326,8 @@
         /* ---- Юридические ссылки / согласие при регистрации ---- */
         .legal-link { color: var(--text-muted); font-size: 0.85rem; cursor: pointer; transition: color 0.2s, opacity 0.2s; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: rgba(255,255,255,0.15); }
         .legal-link:hover { color: var(--text-main); text-decoration-color: var(--text-main); }
-        .legal-consent { font-size: 0.82rem; line-height: 1.5; margin-bottom: 1rem; text-align: center; color: var(--text-muted); }
-        .legal-consent .legal-link { color: #b0b0b0; text-decoration-color: rgba(255,255,255,0.2); font-weight: 500; }
+        .legal-consent { font-size: 0.72rem; line-height: 1.5; margin-bottom: 0; text-align: center; color: #444; }
+        .legal-consent .legal-link { color: #555; text-decoration-color: rgba(255,255,255,0.15); font-weight: 400; }
         .legal-consent .legal-link:hover { color: white; }
         .auth-footer-links { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--surface-hover); }
 

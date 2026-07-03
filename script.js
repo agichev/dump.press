@@ -61,7 +61,7 @@
             document.getElementById('captchaWidget').innerHTML = '';
             turnstileWidgetId = turnstile.render('#captchaWidget', {
                 sitekey: window.TurnstileSiteKey,
-                theme: 'black',
+                theme: 'dark',
                 callback: function(token) { captchaToken = token; document.getElementById('captchaLoading').classList.add('hidden'); proceedAfterCaptcha(); },
                 'expired-callback': function() { captchaToken = ''; },
                 'error-callback': function() { captchaToken = ''; showToast('Не удалось загрузить капчу. Обновите страницу.'); }

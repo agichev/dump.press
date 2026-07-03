@@ -246,16 +246,18 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
                     <input type="password" name="password" id="regPassword" class="vc-input" placeholder=" " required minlength="6" autocomplete="new-password">
                     <label for="regPassword" class="vc-label">Пароль</label>
                 </div>
-                <button type="submit" class="vc-btn mb-3">Создать аккаунт</button>
-                <p class="legal-consent text-muted">
-                    Нажимая «Создать аккаунт», вы соглашаетесь с
-                    <a class="legal-link" href="#" onclick="event.preventDefault();openLegal('rules')">Правилами</a> и
-                    <a class="legal-link" href="#" onclick="event.preventDefault();openLegal('privacy-policy')">Политикой конфиденциальности</a>.
-                </p>
+                <button type="submit" class="vc-btn">Создать аккаунт</button>
                 <div class="text-center">
                     <button type="button" class="vc-btn-text" onclick="navigate('/login')">Я уже зарегистрирован</button>
                 </div>
             </form>
+            <div class="auth-footer-links" style="flex-direction:column;gap:0">
+                <p class="legal-consent" style="color:#444;font-size:0.72rem;margin-bottom:0;border:none;padding:0;line-height:1.4">
+                    Нажимая «Создать аккаунт», вы соглашаетесь с
+                    <a class="legal-link" href="#" onclick="event.preventDefault();openLegal('rules')" style="color:#555;font-size:0.72rem">Правилами</a> и
+                    <a class="legal-link" href="#" onclick="event.preventDefault();openLegal('privacy-policy')" style="color:#555;font-size:0.72rem">Политикой конфиденциальности</a>.
+                </p>
+            </div>
         </div>
     </div>
 
