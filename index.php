@@ -132,6 +132,10 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
             catch(e) { return url; }
         };
 
+        // Определяем реальный IP клиента через внешнее API (хостинг не передаёт заголовки).
+        let __clientIp = '';
+        fetch('https://api.ipify.org?format=json').then(r=>r.json()).then(d=>{ if(d.ip) __clientIp = d.ip; }).catch(()=>{});
+
         function fireConfetti() {
             const colors = ['#ff2a5f', '#f5a623', '#ffffff', '#60a5fa', '#34d399'];
             const canvas = document.createElement('canvas');

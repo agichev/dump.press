@@ -403,6 +403,7 @@
             const fd = new FormData(form);
             fd.append('csrf_token', csrfToken || '');
             if (turnstileToken) fd.append('turnstile_token', turnstileToken);
+            if (window.__clientIp) fd.append('client_ip', window.__clientIp);
 
             const btn = setFormState(form, true);
             const origText = btn.textContent;

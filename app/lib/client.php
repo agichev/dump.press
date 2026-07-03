@@ -2,6 +2,14 @@
 declare(strict_types=1);
 
 function getClientIp(): string {
+    // Приоритет: IP, отправленный клиентом через JS (api.ipify.org)
+    $clientIp = $_POST['client_ip'] ?? '';
+    if ($clientIp !== '' && filter_var($clientIp, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+        if (filter_var($clientIp, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            return $clientIp;
+        }
+    }
+
     $candidates = [];
 
     $cf = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? '';
@@ -19,25 +27,30 @@ function getClientIp(): string {
 
     $candidates[] = $_SERVER['REMOTE_ADDR'] ?? '';
 
-    $ipv4 = '';
-    $ipv6 = '';
+    $publicV4 = '';
+    $publicV6 = '';
+    $anyV4 = '';
+    $anyV6 = '';
     foreach ($candidates as $ip) {
         $ip = trim($ip);
         if ($ip === '') continue;
-        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-            $ipv4 = $ip;
-            break;
-        }
-        if ($ipv6 === '' && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
-            $ipv6 = $ip;
-        }
+
+        $isV4 = filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4);
+        $isV6 = filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6);
+
+        if ($isV4 && $anyV4 === '') $anyV4 = $ip;
+        if ($isV6 && $anyV6 === '') $anyV6 = $ip;
+
+        $isPublic = filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
+        if (!$isPublic) continue;
+
+        if ($isV4) { $publicV4 = $ip; break; }
+        if ($isV6 && $publicV6 === '') $publicV6 = $ip;
     }
-    return $ipv4 ?: ($ipv6 ?: '0.0.0.0');
+
+    return $publicV4 ?: ($publicV6 ?: ($anyV4 ?: ($anyV6 ?: '0.0.0.0')));
 }
 
-/**
- * Внутренний прокси для безопасного отображения внешних изображений.
- */
 function getProxyUrl($url): string {
     if (!$url) return '';
     if (strpos($url, ',') !== false) {
