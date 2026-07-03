@@ -832,5 +832,8 @@ try {
     echo json_encode(['success' => false, 'error' => 'Внутренняя ошибка базы данных']);
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+} catch (Throwable $e) {
+    error_log("FATAL: " . $e->getMessage());
+    echo json_encode(['success' => false, 'error' => 'Внутренняя ошибка сервера']);
 }
 exit;

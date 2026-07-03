@@ -455,6 +455,7 @@
                 const fd = new FormData();
                 fd.append('temp_token', tfaLoginTempToken);
                 fd.append('code', code);
+                if (window.__clientIp) fd.append('client_ip', window.__clientIp);
                 
                 const res = await fetch(apiCall('tfa_verify_login'), { method: 'POST', body: fd });
                 const data = await res.json();
