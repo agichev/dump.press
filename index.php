@@ -34,8 +34,9 @@ $path_parts = explode('/', $_req);
 /* ----------------------------------------------------------------------
  |  SEO + предрендер юридических документов при прямом заходе на /legal/*
  | --------------------------------------------------------------------- */
-$turnstile_site_key = $GLOBALS['TURNSTILE_SITE_KEY'] ?? '';
-$turnstile_enabled  = $turnstile_site_key !== '';
+$turnstile_site_key   = $GLOBALS['TURNSTILE_SITE_KEY'] ?? '';
+$turnstile_secret_key = $GLOBALS['TURNSTILE_SECRET_KEY'] ?? '';
+$turnstile_enabled    = $turnstile_site_key !== '' && $turnstile_secret_key !== '';
 
 $random_titles = ["Dump", "Настоящий Dump"];
 $seo_title = $random_titles[array_rand($random_titles)];
@@ -108,7 +109,7 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 
-    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css">
+    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=2">
 
     <?php if ($turnstile_enabled): ?>
     <script>
@@ -610,6 +611,6 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
             </form>
         </div>
     </div>
-    <script src="<?= htmlspecialchars($asset_base) ?>/script.js"></script>
+    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=2"></script>
 </body>
 </html>

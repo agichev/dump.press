@@ -32,7 +32,7 @@ function outputRobotsTxt(): void {
     echo "Disallow: /create\n";
     echo "Disallow: /login\n";
     echo "Disallow: /register\n";
-    echo "\nSitemap: " . $base . "/sitemap.xml\n";
+    echo "\nSitemap: " . $base . "/index.php?api=sitemap\n";
     exit;
 }
 

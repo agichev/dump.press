@@ -818,6 +818,17 @@ try {
             break;
         }
 
+        /* ---------------- SITEMAP / ROBOTS ---------------- */
+        case 'sitemap':
+            require_once __DIR__ . '/lib/sitemap.php';
+            outputSitemapXml();
+            break;
+
+        case 'robots':
+            require_once __DIR__ . '/lib/sitemap.php';
+            outputRobotsTxt();
+            break;
+
         default:
             echo json_encode(['success' => false, 'error' => 'API route not found']);
     }

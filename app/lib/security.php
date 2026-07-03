@@ -10,7 +10,9 @@ declare(strict_types=1);
  */
 function verifyTurnstile(?string $token, string $remoteIp): bool {
     $secret = $GLOBALS['TURNSTILE_SECRET_KEY'] ?? '';
-    if ($secret === '') return true; // dev-bypass
+    $site   = $GLOBALS['TURNSTILE_SITE_KEY'] ?? '';
+    // Капча отключена — не проверяем
+    if ($secret === '' || $site === '') return true;
     if (!$token) return false;
 
     $ch = curl_init('https://challenges.cloudflare.com/turnstile/v0/siteverify');
