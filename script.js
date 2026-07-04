@@ -207,6 +207,57 @@
             loadFeed();
         }
 
+        /* ─── Bottom Navigation ─── */
+        window.bottomNavClick = function(nav) {
+            if (nav === 'feed') {
+                navigate('/');
+            } else if (nav === 'search') {
+                if (!currentUser) { navigate('/login'); return; }
+                openSearch();
+            } else if (nav === 'create') {
+                if (!currentUser) { navigate('/login'); return; }
+                navigate('/create');
+            } else if (nav === 'profile') {
+                if (!currentUser) { navigate('/login'); return; }
+                navigate('/profile');
+            }
+        };
+
+        function updateBottomNav() {
+            const nav = document.getElementById('bottomNav');
+            if (!nav) return;
+            const path = window.location.pathname;
+            let cleanPath = path;
+            if (BASE_PATH && cleanPath.startsWith(BASE_PATH)) cleanPath = cleanPath.substring(BASE_PATH.length);
+            if (!cleanPath) cleanPath = '/';
+
+            const isGuest = !currentUser;
+            const isAuthPage = cleanPath === '/login' || cleanPath === '/register';
+            const isLegal = cleanPath.startsWith('/legal/');
+            const isPostRoute = cleanPath.startsWith('/post/');
+            const isFeed = cleanPath === '/' || isPostRoute;
+            const isProfile = cleanPath.startsWith('/profile');
+
+            if (isAuthPage || isLegal) {
+                nav.classList.remove('visible');
+            } else if (isGuest && !isPostRoute) {
+                nav.classList.remove('visible');
+            } else {
+                nav.classList.add('visible');
+            }
+
+            document.querySelectorAll('.bottom-nav-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            if (isFeed) {
+                const el = nav.querySelector('[data-nav="feed"]');
+                if (el) el.classList.add('active');
+            } else if (isProfile) {
+                const el = nav.querySelector('[data-nav="profile"]');
+                if (el) el.classList.add('active');
+            }
+        }
+
         const handleRoute = () => {
             let path = window.location.pathname;
             if (BASE_PATH && path.startsWith(BASE_PATH)) path = path.substring(BASE_PATH.length);
@@ -227,6 +278,7 @@
                 const slug = (path.split('/')[2] || '').trim();
                 if (slug === 'privacy-policy' || slug === 'rules') {
                     if(nav) nav.classList.remove('visible');
+                    updateBottomNav();
                     showLegalModal(slug);
                     return;
                 }
@@ -237,8 +289,8 @@
                 return;
             }
 
-            if (isGuest && path === '/login') { switchView('loginView'); if(nav) nav.classList.remove('visible'); return; }
-            if (isGuest && path === '/register') { switchView('registerView'); if(nav) nav.classList.remove('visible'); return; }
+            if (isGuest && path === '/login') { switchView('loginView'); if(nav) nav.classList.remove('visible'); updateBottomNav(); return; }
+            if (isGuest && path === '/register') { switchView('registerView'); if(nav) nav.classList.remove('visible'); updateBottomNav(); return; }
 
             if(nav) nav.classList.add('visible');
             
@@ -259,16 +311,19 @@
                 const uid = (parts[parts.length - 1] && parts[parts.length - 1] !== 'profile') ? parseInt(parts[parts.length - 1]) : currentUser.id;
                 openProfileData(uid);
                 window.scrollTo(0,0);
+                updateBottomNav();
             } 
             else if (path === '/create' && !isGuest) {
                 if(feedTabs) feedTabs.classList.add('hidden');
                 openModal('createView', 'postContent');
+                updateBottomNav();
             } 
             else { 
                 switchView('feedView');
                 if(feedTabs) feedTabs.classList.remove('hidden');
                 if(isGuest && feedTabs) feedTabs.classList.add('hidden'); 
                 initTabIndicator(); 
+                updateBottomNav();
                 
                 const createView = document.getElementById('createView');
                 if (createView && createView.classList.contains('open')) closeModal('createView');
@@ -684,6 +739,75 @@
                 wheelTimeout = setTimeout(() => { isScrollingFeed = false; }, 500);
             }
         }, {passive: true});
+
+        /* ─── Pull-to-Refresh ─── */
+        let ptrStartY = 0, ptrCurrentY = 0, ptrActive = false, ptrTriggered = false;
+        const PTR_THRESHOLD = 80;
+        let ptrEl = null;
+
+        function ensurePtrEl() {
+            if (!ptrEl || !ptrEl.parentNode) {
+                ptrEl = document.createElement('div');
+                ptrEl.id = 'ptrIndicator';
+                ptrEl.innerHTML = '<i class="ph ph-arrow-down" style="font-size:1.5rem;"></i>';
+                document.body.prepend(ptrEl);
+            }
+            return ptrEl;
+        }
+
+        function ptrTouchStart(e) {
+            if (!feedViewEl.classList.contains('active')) return;
+            if (currentFeedIndex !== 0) return;
+            if (e.target.closest('.scrollable-overlay') || e.target.closest('.post-text-content')) return;
+            ptrStartY = e.touches[0].clientY;
+            ptrCurrentY = ptrStartY;
+            ptrActive = true;
+            ptrTriggered = false;
+        }
+
+        function ptrTouchMove(e) {
+            if (!ptrActive) return;
+            ptrCurrentY = e.touches[0].clientY;
+            const diff = ptrCurrentY - ptrStartY;
+            if (diff <= 0) { resetPtr(); return; }
+
+            const el = ensurePtrEl();
+            const pullDist = Math.min(diff * 0.5, PTR_THRESHOLD + 30);
+            el.style.height = pullDist + 'px';
+
+            if (diff >= PTR_THRESHOLD && !ptrTriggered) {
+                ptrTriggered = true;
+                el.innerHTML = '<i class="ph ph-spinner spin" style="font-size:1.2rem;"></i> <span style="font-weight:600;">Обновление...</span>';
+                setTimeout(() => {
+                    ptrActive = false;
+                    el.style.height = '0';
+                    loadFeed();
+                }, 200);
+            } else if (!ptrTriggered) {
+                const progress = Math.min(diff / PTR_THRESHOLD, 1);
+                el.innerHTML = '<i class="ph ph-arrow-down" style="font-size:1.5rem;transform:rotate(' + (progress * 180) + 'deg);transition:transform 0.1s;"></i> <span style="font-weight:500;">Потяните для обновления</span>';
+            }
+        }
+
+        function ptrTouchEnd(e) {
+            if (!ptrActive) return;
+            ptrActive = false;
+            const el = document.getElementById('ptrIndicator');
+            if (el && !ptrTriggered) {
+                el.style.height = '0';
+            }
+            ptrTriggered = false;
+        }
+
+        function resetPtr() {
+            ptrActive = false;
+            const el = document.getElementById('ptrIndicator');
+            if (el) el.style.height = '0';
+        }
+
+        feedViewEl.addEventListener('touchstart', ptrTouchStart, {passive: true});
+        feedViewEl.addEventListener('touchmove', ptrTouchMove, {passive: true});
+        feedViewEl.addEventListener('touchend', ptrTouchEnd);
 
         function handleSwipeStart(e) {
             if (!feedViewEl.classList.contains('active') || isScrollingFeed) return;
