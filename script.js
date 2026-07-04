@@ -765,10 +765,6 @@
                     }
                 }
 
-                window.autoSlideLogic = advanceSlide;
-
-                window.postSliderInterval = setInterval(advanceSlide, 2000);
-
                 const setPause = (state) => {
                     isSliderPaused = state;
                     const activeDot = dotsContainer?.querySelector('.slider-dot.active');
@@ -784,6 +780,16 @@
                     postWrapper.addEventListener('pointerup', () => setPause(false));
                     postWrapper.addEventListener('pointercancel', () => setPause(false));
                     postWrapper.addEventListener('pointerleave', () => setPause(false));
+                }
+
+                if (dotsContainer) {
+                    const onAnimEnd = (e) => {
+                        if (e.target.classList.contains('slider-dot') && (e.animationName === 'dot-progress' || e.animationName === 'webkitDotProgress')) {
+                            advanceSlide();
+                        }
+                    };
+                    dotsContainer.addEventListener('animationend', onAnimEnd);
+                    dotsContainer.addEventListener('webkitAnimationEnd', onAnimEnd);
                 }
             }
         }
