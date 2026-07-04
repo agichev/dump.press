@@ -756,7 +756,6 @@
 
                 function advanceSlide() {
                     if (isSliderPaused) return;
-                    console.log('advanceSlide called', performance.now());
                     
                     currentSlideIndex = (currentSlideIndex + 1) % imagesCount;
                     activeSlider.style.transform = `translateX(-${currentSlideIndex * 100}%) translateZ(0)`;
