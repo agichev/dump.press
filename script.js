@@ -750,16 +750,16 @@
                     dots.forEach(d => d.classList.remove('active', 'paused'));
                     if(dots[0]) dots[0].classList.add('active');
                 }
-                activeSlider.style.transform = `translateX(0%)`; 
                 let currentSlideIndex = 0;
                 let slideTimerStart = performance.now();
                 let rafId = null;
 
                 function advanceSlide() {
                     if (isSliderPaused) return;
+                    console.log('advanceSlide called', performance.now());
                     
                     currentSlideIndex = (currentSlideIndex + 1) % imagesCount;
-                    activeSlider.style.transform = `translateX(-${currentSlideIndex * 100}%)`;
+                    activeSlider.style.transform = `translateX(-${currentSlideIndex * 100}%) translateZ(0)`;
                     
                     if(dots) {
                         dots.forEach((d, i) => {
@@ -786,8 +786,6 @@
                     });
                     window.postSliderRaf = rafId;
                 }
-
-                window.autoSlideLogic = advanceSlide;
 
                 const setPause = (state) => {
                     isSliderPaused = state;
