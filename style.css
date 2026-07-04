@@ -393,7 +393,7 @@
         @media (max-width: 768px) {
             .post-wrapper {
                 max-width: 100%; width: 100%;
-                height: 92dvh; max-height: none;
+                height: calc(100dvh - 112px); max-height: none;
                 border-radius: 0;
             }
             .post-actions {
@@ -422,11 +422,11 @@
                 padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
             }
             .post-card {
-                height: calc(100dvh - env(safe-area-inset-top, 0px));
+                height: 100dvh;
             }
             .profile-container {
                 padding: 4.5rem 0.75rem 1.5rem;
-                height: calc(100dvh - env(safe-area-inset-top, 0px));
+                height: 100dvh;
                 padding-bottom: calc(1.5rem + 56px + env(safe-area-inset-bottom, 0px));
             }
             .profile-header {
@@ -465,7 +465,7 @@
         }
 
         @media (max-width: 380px) {
-            .post-wrapper { height: 90dvh; }
+            .post-wrapper { height: calc(100dvh - 100px); }
             .post-actions { right: 0.5rem; gap: 0.6rem; }
             .action-btn .icon-bg { padding: 10px; font-size: 1.5rem; }
             .nav-brand { font-size: 1.8rem; }
