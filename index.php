@@ -79,7 +79,7 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title><?= htmlspecialchars($seo_title, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></title>
 
     <meta name="description" content="<?= htmlspecialchars($seo_desc, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">

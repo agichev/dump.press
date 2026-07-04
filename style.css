@@ -20,7 +20,7 @@
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-        body { background-color: var(--bg); color: var(--text-main); font-family: var(--font-family); -webkit-font-smoothing: antialiased; overflow: hidden; width: 100vw; height: 100vh; }
+        body { background-color: var(--bg); color: var(--text-main); font-family: var(--font-family); -webkit-font-smoothing: antialiased; overflow: hidden; width: 100vw; height: 100dvh; height: -webkit-fill-available; }
 
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: var(--bg); }
@@ -149,16 +149,16 @@
         }
         .icon-btn:active { transform: scale(0.92); }
 
-        .feed-container { position: relative; overflow: hidden; width: 100vw; height: 100vh; touch-action: pan-y; }
+        .feed-container { position: relative; overflow: hidden; width: 100vw; height: 100dvh; touch-action: pan-y; }
         .feed-wrapper { display: flex; flex-direction: row; height: 100%; width: max-content; transition: transform 0.45s cubic-bezier(0.25, 1, 0.5, 1); will-change: transform; transform: translateZ(0); }
-        .post-card { flex: 0 0 100vw; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; position: relative; }
+        .post-card { flex: 0 0 100vw; width: 100vw; height: 100dvh; display: flex; justify-content: center; align-items: center; position: relative; }
         
-        .post-wrapper { width: 100%; max-width: 450px; height: 82vh; max-height: 850px; position: relative; background-color: var(--surface); border-radius: var(--radius-lg); overflow: hidden; display: flex; align-items: center; justify-content: center; flex-direction: column; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; transform: translateZ(0); }
+        .post-wrapper { width: 100%; max-width: 450px; height: 82dvh; max-height: 850px; position: relative; background-color: var(--surface); border-radius: var(--radius-lg); overflow: hidden; display: flex; align-items: center; justify-content: center; flex-direction: column; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; transform: translateZ(0); }
         
         .post-overlay-bottom { position: absolute; bottom: 0; left: 0; width: 100%; padding: 4rem 1.5rem 1.5rem; background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 60%, transparent 100%); color: white; font-size: 1.05rem; line-height: 1.4; pointer-events: none; word-break: break-word; z-index: 20; }
         .post-overlay-bottom a, .post-overlay-bottom .hashtag { pointer-events: auto; } 
         
-        .scrollable-overlay { max-height: 45vh; overflow-y: auto; pointer-events: auto; overscroll-behavior: contain; }
+        .scrollable-overlay { max-height: 45dvh; overflow-y: auto; pointer-events: auto; overscroll-behavior: contain; }
         .post-text-content { pointer-events: auto; }
         
         .hashtag { color: #ffffff; font-weight: 700; cursor: pointer; transition: 0.2s; position: relative; z-index: 50; }
@@ -207,7 +207,7 @@
         .fc-msg { color: white; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         @keyframes floatUp { 0% { transform: translateY(0); opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { transform: translateY(-300px); opacity: 0; } }
 
-        .profile-container { padding: 6rem 1rem 2rem; max-width: 600px; margin: 0 auto; left: 0; right: 0; height: 100vh; overflow-y: auto; }
+        .profile-container { padding: 6rem 1rem 2rem; max-width: 600px; margin: 0 auto; left: 0; right: 0; height: 100dvh; overflow-y: auto; }
         .profile-header { display: flex; align-items: center; gap: 2rem; margin-bottom: 1.5rem; }
         .profile-avatar { width: 90px; height: 90px; border-radius: 50%; object-fit: cover; background: var(--surface-elevated); }
         .profile-stats { display: flex; gap: 2rem; margin-top: 1.2rem; }
@@ -228,14 +228,14 @@
         .grid-item .text-preview { font-size: 0.75rem; padding: 0.5rem; text-align: center; color: var(--text-muted); word-break: break-word; line-height: 1.3; overflow-y: hidden; }
         .multi-img-icon { position: absolute; top: 6px; right: 6px; color: white; background: rgba(0,0,0,0.5); border-radius: 4px; padding: 2px; font-size: 0.8rem; z-index: 10;}
 
-        .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 100; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s ease; }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 100; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s ease; }
         .modal-overlay.open { opacity: 1; visibility: visible; }
         .modal-bottom { align-items: flex-end; }
         
         .modal-content { background: var(--bg); width: 100%; max-width: 450px; border-radius: var(--radius-lg); padding: 1.5rem; position: relative; transform: scale(0.95); transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1); }
         .modal-overlay.open .modal-content { transform: scale(1); }
         
-        .modal-bottom .modal-content { background: var(--surface); border-radius: 24px 24px 0 0; height: 80vh; max-height: 800px; display: flex; flex-direction: column; padding: 0; transform: translateY(100%); max-width: 600px; }
+        .modal-bottom .modal-content { background: var(--surface); border-radius: 24px 24px 0 0; height: 80dvh; max-height: 800px; display: flex; flex-direction: column; padding: 0; transform: translateY(100%); max-width: 600px; }
         .modal-overlay.open.modal-bottom .modal-content { transform: translateY(0); }
 
         .settings-tabs { display: flex; border-bottom: 1px solid var(--surface-hover); margin-bottom: 1.5rem; overflow-x: auto; scrollbar-width: none; }
@@ -369,7 +369,6 @@
             border-top: 1px solid var(--surface-hover);
             display: none; align-items: center; justify-content: space-around;
             z-index: 60;
-            padding-bottom: constant(safe-area-inset-bottom, 0px);
             padding-bottom: env(safe-area-inset-bottom, 0px);
         }
         .bottom-nav.visible { display: flex; }
@@ -394,7 +393,7 @@
         @media (max-width: 768px) {
             .post-wrapper {
                 max-width: 100%; width: 100%;
-                height: 92vh; max-height: none;
+                height: 92dvh; max-height: none;
                 border-radius: 0;
             }
             .post-actions {
@@ -413,7 +412,7 @@
                 padding: 0.6rem 1rem;
                 padding-top: calc(0.6rem + env(safe-area-inset-top, 0px));
             }
-            .nav-brand { font-size: 1.6rem; }
+            .nav-brand { font-size: 2rem; }
             .nav-tabs { padding: 3px; }
             .nav-tab { padding: 5px 16px; font-size: 0.78rem; }
             .icon-btn {
@@ -423,11 +422,12 @@
                 padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
             }
             .post-card {
-                height: calc(100vh - env(safe-area-inset-top, 0px));
+                height: calc(100dvh - env(safe-area-inset-top, 0px));
             }
             .profile-container {
                 padding: 4.5rem 0.75rem 1.5rem;
-                height: calc(100vh - env(safe-area-inset-top, 0px));
+                height: calc(100dvh - env(safe-area-inset-top, 0px));
+                padding-bottom: calc(1.5rem + 56px + env(safe-area-inset-bottom, 0px));
             }
             .profile-header {
                 flex-direction: column; text-align: center; gap: 0.75rem;
@@ -443,12 +443,12 @@
             }
             .modal-overlay:not(.modal-bottom) .modal-content {
                 min-height: auto; border-radius: 16px;
-                max-height: 90vh; overflow-y: auto;
+                max-height: 90dvh; overflow-y: auto;
             }
             .modal-bottom .modal-content {
                 width: 100%; margin: 0;
                 border-radius: 24px 24px 0 0;
-                max-height: 92vh;
+                max-height: 92dvh;
             }
             .search-result-item { padding: 14px; }
             .comment-input-wrapper textarea { font-size: 0.9rem; padding: 10px 14px; }
@@ -465,10 +465,10 @@
         }
 
         @media (max-width: 380px) {
-            .post-wrapper { height: 90vh; }
+            .post-wrapper { height: 90dvh; }
             .post-actions { right: 0.5rem; gap: 0.6rem; }
             .action-btn .icon-bg { padding: 10px; font-size: 1.5rem; }
-            .nav-brand { font-size: 1.4rem; }
+            .nav-brand { font-size: 1.8rem; }
             .nav-tab { padding: 4px 12px; font-size: 0.72rem; }
             .bottom-nav { height: 50px; }
             .bottom-nav-item i { font-size: 1.3rem; }
