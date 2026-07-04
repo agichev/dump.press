@@ -20,7 +20,7 @@
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-        body { background-color: var(--bg); color: var(--text-main); font-family: var(--font-family); -webkit-font-smoothing: antialiased; overflow: hidden; width: 100vw; height: 100dvh; height: -webkit-fill-available; }
+        body { background-color: var(--bg); color: var(--text-main); font-family: var(--font-family); -webkit-font-smoothing: antialiased; overflow: hidden; width: 100vw; height: 100dvh; }
 
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: var(--bg); }
@@ -457,6 +457,7 @@
 
             /* Скрываем дублирующие кнопки в топ-баре на мобилках */
             #mainNav .icon-btn:not(#navBackBtn) { display: none; }
+            .bottom-nav { display: flex; }
             .bottom-nav.visible { display: flex; }
         }
 
