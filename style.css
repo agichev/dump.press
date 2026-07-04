@@ -1,4 +1,6 @@
-        :root {
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
             --bg: #000000;
             --surface: #0a0a0a;
             --surface-elevated: #111111;
@@ -13,7 +15,7 @@
             --radius-sm: 8px;
             --radius-md: 14px;
             --radius-lg: 24px;
-            --font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             --transition: 0.35s cubic-bezier(0.25, 1, 0.5, 1);
         }
 
