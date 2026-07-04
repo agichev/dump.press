@@ -360,50 +360,35 @@
         .legal-body code { background: var(--surface-elevated); padding: 1px 6px; border-radius: 6px; font-size: 0.85em; }
         .legal-body strong { color: var(--text-main); }
 
-        /* ─── Bottom Navigation (мобильное приложение) ─── */
+        /* ─── Bottom Navigation ─── */
         .bottom-nav {
-            position: fixed; bottom: 0; left: 0; right: 0; height: 64px;
-            background: rgba(10,10,10,0.92);
-            backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px);
+            position: fixed; bottom: 0; left: 0; right: 0; height: 56px;
+            background: var(--surface);
             border-top: 1px solid var(--surface-hover);
-            display: flex; align-items: center; justify-content: space-around;
+            display: none; align-items: center; justify-content: space-around;
             z-index: 60;
             padding-bottom: constant(safe-area-inset-bottom, 0px);
             padding-bottom: env(safe-area-inset-bottom, 0px);
-            opacity: 0; visibility: hidden; pointer-events: none;
-            transition: opacity 0.3s ease, visibility 0.3s ease;
         }
-        .bottom-nav.visible { opacity: 1; visibility: visible; pointer-events: auto; }
+        .bottom-nav.visible { display: flex; }
         .bottom-nav-item {
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            gap: 2px; flex: 1; height: 100%;
-            color: var(--text-muted); font-size: 0.6rem; font-weight: 600;
-            letter-spacing: 0.02em;
+            display: flex; align-items: center; justify-content: center;
+            flex: 1; height: 100%;
+            color: var(--text-muted);
             -webkit-tap-highlight-color: transparent;
-            padding: 0 4px; position: relative;
+            padding: 0; position: relative;
             transition: color 0.2s;
         }
         .bottom-nav-item i {
-            font-size: 1.5rem; transition: transform 0.15s, color 0.2s;
-        }
-        .bottom-nav-item span {
-            font-size: 0.6rem; line-height: 1;
+            font-size: 1.4rem; transition: transform 0.15s, color 0.2s;
         }
         .bottom-nav-item.active { color: var(--text-main); }
         .bottom-nav-item:active i { transform: scale(0.85); }
-        .bottom-nav-create { margin-top: 0; }
-        .bottom-nav-create i {
-            font-size: 1.8rem; width: 48px; height: 48px;
-            display: flex; align-items: center; justify-content: center;
-            background: var(--accent); color: var(--accent-bg);
-            border-radius: 50%; margin-top: -8px;
-            box-shadow: 0 4px 20px rgba(255,255,255,0.2);
-            transition: transform 0.15s, box-shadow 0.2s;
+        .bottom-nav-item[data-nav="create"] i {
+            font-size: 1.5rem;
         }
-        .bottom-nav-create:active i { transform: scale(0.9); box-shadow: 0 2px 10px rgba(255,255,255,0.1); }
 
-        /* ─── Mobile App-Like Layout ─── */
+        /* ─── Mobile: только то, что реально нужно ─── */
         @media (max-width: 768px) {
             .post-wrapper {
                 max-width: 100%; width: 100%;
@@ -433,18 +418,13 @@
                 width: 40px; height: 40px; font-size: 1.1rem;
             }
             body {
-                padding-bottom: 64px;
-                padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
-            }
-            .feed-container, .profile-container {
-                height: calc(100vh - 0px);
+                padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
             }
             .post-card {
-                height: 100vh; height: calc(100vh - env(safe-area-inset-top, 0px));
+                height: calc(100vh - env(safe-area-inset-top, 0px));
             }
             .profile-container {
                 padding: 4.5rem 0.75rem 1.5rem;
-                height: 100vh;
                 height: calc(100vh - env(safe-area-inset-top, 0px));
             }
             .profile-header {
@@ -468,17 +448,20 @@
                 border-radius: 24px 24px 0 0;
                 max-height: 92vh;
             }
-            .settings-modal-content { max-height: 85vh; }
             .search-result-item { padding: 14px; }
             .comment-input-wrapper textarea { font-size: 0.9rem; padding: 10px 14px; }
-            .bottom-nav-item span { font-size: 0.55rem; }
-            .bottom-nav { height: 56px; }
-            body { padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px)); }
             .auth-footer-links { font-size: 0.8rem; gap: 8px; }
             .settings-tab { padding: 10px 14px; font-size: 0.85rem; }
+
+            /* Скрываем дублирующие кнопки в топ-баре на мобилках */
+            #mainNav .icon-btn:not(#navBackBtn) { display: none; }
+            .bottom-nav.visible { display: flex; }
         }
 
-        /* ─── Extra small screens ─── */
+        @media (min-width: 769px) {
+            .bottom-nav { display: none !important; }
+        }
+
         @media (max-width: 380px) {
             .post-wrapper { height: 90vh; }
             .post-actions { right: 0.5rem; gap: 0.6rem; }
@@ -487,7 +470,6 @@
             .nav-tab { padding: 4px 12px; font-size: 0.72rem; }
             .bottom-nav { height: 50px; }
             .bottom-nav-item i { font-size: 1.3rem; }
-            .bottom-nav-create i { width: 42px; height: 42px; font-size: 1.5rem; }
             body { padding-bottom: calc(50px + env(safe-area-inset-bottom, 0px)); }
         }
 
@@ -503,6 +485,4 @@
             border-bottom: 1px solid var(--surface-hover);
         }
         #ptrIndicator i { transition: transform 0.2s; }
-
-        /* ─── Desktop: не меняем ничего, всё скрыто ─── */
 

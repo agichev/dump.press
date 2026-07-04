@@ -575,19 +575,16 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
 
     <div id="bottomNav" class="bottom-nav">
         <button class="bottom-nav-item active" data-nav="feed" onclick="bottomNavClick('feed')">
-            <i class="ph-fill ph-house"></i>
-            <span>Главная</span>
+            <i class="ph ph-house"></i>
         </button>
         <button class="bottom-nav-item" data-nav="search" onclick="bottomNavClick('search')">
             <i class="ph ph-magnifying-glass"></i>
-            <span>Поиск</span>
         </button>
-        <button class="bottom-nav-item bottom-nav-create" data-nav="create" onclick="bottomNavClick('create')">
+        <button class="bottom-nav-item" data-nav="create" onclick="bottomNavClick('create')">
             <i class="ph ph-plus"></i>
         </button>
         <button class="bottom-nav-item" data-nav="profile" onclick="bottomNavClick('profile')">
             <i class="ph ph-user"></i>
-            <span>Профиль</span>
         </button>
     </div>
 
