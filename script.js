@@ -736,7 +736,7 @@
             const wrapper = document.getElementById('feedWrapper');
             if (!wrapper) return;
             
-            if (window.postSliderInterval) { clearInterval(window.postSliderInterval); }
+            if (window.postSliderInterval) { clearInterval(window.postSliderInterval); window.postSliderInterval = null; }
             const activeSlider = wrapper.children[index]?.querySelector('.image-slider');
             if (activeSlider && activeSlider.children.length > 1) {
                 let isSliderPaused = false;
@@ -745,13 +745,13 @@
                 const dots = dotsContainer?.querySelectorAll('.slider-dot');
                 
                 if(dots) {
-                    dots.forEach(d => { d.classList.remove('active', 'paused'); void d.offsetWidth; });
+                    dots.forEach(d => d.classList.remove('active', 'paused'));
                     if(dots[0]) dots[0].classList.add('active');
                 }
                 activeSlider.style.transform = `translateX(0%)`; 
                 let currentSlideIndex = 0;
 
-                window.autoSlideLogic = () => {
+                function advanceSlide() {
                     if (isSliderPaused) return;
                     
                     currentSlideIndex = (currentSlideIndex + 1) % imagesCount;
@@ -763,9 +763,11 @@
                             if (i === currentSlideIndex) { void d.offsetWidth; d.classList.add('active'); }
                         });
                     }
-                };
+                }
 
-                window.postSliderInterval = setInterval(window.autoSlideLogic, 2000);
+                window.autoSlideLogic = advanceSlide;
+
+                window.postSliderInterval = setInterval(advanceSlide, 2000);
 
                 const setPause = (state) => {
                     isSliderPaused = state;
@@ -1666,7 +1668,7 @@
                     let dotsHtml = '';
                     images.forEach((img, idx) => {
                         slidesHtml += `<img src="${getProxyUrl(img)}" class="slider-img" loading="lazy">`;
-                        dotsHtml += `<div class="slider-dot ${idx===0 ? 'active':''}"></div>`;
+                        dotsHtml += `<div class="slider-dot"></div>`;
                     });
                     contentHtml += `
                         <div class="image-slider">${slidesHtml}</div>
