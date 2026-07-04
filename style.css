@@ -504,14 +504,5 @@
         }
         #ptrIndicator i { transition: transform 0.2s; }
 
-        /* ─── Desktop enhancements ─── */
-        @media (min-width: 769px) {
-            .bottom-nav.visible {
-                opacity: 0; visibility: hidden; pointer-events: none;
-            }
-            .nav-bar { max-width: 600px; left: 50%; transform: translateX(-50%); }
-            .feed-container .post-wrapper {
-                box-shadow: 0 8px 40px rgba(0,0,0,0.4);
-            }
-        }
+        /* ─── Desktop: не меняем ничего, всё скрыто ─── */
 
