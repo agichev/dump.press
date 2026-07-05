@@ -74,12 +74,14 @@ try {
 } catch (Exception $e) {}
 
 $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
+
+$is_dump_app = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
 ?>
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="<?= $is_dump_app ? 'width=390, initial-scale=1.0, maximum-scale=1.0, user-scalable=no' : 'width=device-width, initial-scale=1.0, viewport-fit=cover' ?>">
     <title><?= htmlspecialchars($seo_title, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?></title>
 
     <meta name="description" content="<?= htmlspecialchars($seo_desc, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
@@ -114,6 +116,9 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
         };
     </script>
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=turnstileOnLoad&render=explicit" async defer></script>
+    <?php endif; ?>
+    <?php if ($is_dump_app): ?>
+    <style>.bottom-nav{display:flex!important}#mainNav .icon-btn:not(#navBackBtn){display:none!important}.post-wrapper{max-width:100%!important;width:100%!important;border-radius:0!important}body{padding-bottom:56px!important}</style>
     <?php endif; ?>
 </head>
 <body>
