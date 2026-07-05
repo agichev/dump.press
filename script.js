@@ -1174,6 +1174,7 @@
                         if(isApp) device = "Мобильное приложение";
                         else if(s.user_agent.includes('Windows')) device = "Windows";
                         else if(s.user_agent.includes('Mac OS')) device = "MacOS";
+                        else if(s.user_agent.includes('Linux') && !s.user_agent.includes('Android')) device = "Linux";
                         else if(s.user_agent.includes('Android')) device = "Android";
                         else if(s.user_agent.includes('iPhone') || s.user_agent.includes('iPad')) device = "iOS";
                         

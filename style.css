@@ -137,7 +137,7 @@
         .nav-bar.visible { opacity: 1; visibility: visible; pointer-events: auto; }
         .nav-brand { font-size: 2.2rem; cursor: pointer; }
         
-        .nav-tabs { position: absolute; right: 70px; display: flex; background: var(--surface-elevated); border-radius: 99px; padding: 4px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        .nav-tabs { position: absolute; left: 50%; transform: translateX(-50%); display: flex; background: var(--surface-elevated); border-radius: 99px; padding: 4px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
         .tab-indicator { position: absolute; top: 4px; bottom: 4px; left: 4px; background: var(--surface-active); border-radius: 99px; transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1), width 0.3s cubic-bezier(0.25, 1, 0.5, 1); z-index: 0; pointer-events: none; }
         .nav-tab { padding: 6px 20px; border-radius: 99px; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); transition: color 0.2s ease; position: relative; z-index: 1; }
         .nav-tab.active { color: var(--text-main); }
@@ -413,7 +413,7 @@
                 padding-top: calc(0.6rem + env(safe-area-inset-top, 0px));
             }
             .nav-brand { font-size: 2rem; }
-            .nav-tabs { position: absolute; right: 55px; padding: 3px; }
+            .nav-tabs { left: auto; right: 16px; transform: none; padding: 3px; }
             .nav-tab { padding: 5px 16px; font-size: 0.78rem; }
             .icon-btn {
                 width: 40px; height: 40px; font-size: 1.1rem;
@@ -470,7 +470,7 @@
             .post-actions { right: 0.5rem; gap: 0.6rem; }
             .action-btn .icon-bg { padding: 10px; font-size: 1.5rem; }
             .nav-brand { font-size: 1.8rem; }
-            .nav-tabs { right: 45px; padding: 2px; }
+            .nav-tabs { left: auto; right: 12px; transform: none; padding: 2px; }
             .nav-tab { padding: 4px 12px; font-size: 0.72rem; }
             .bottom-nav { height: 50px; }
             .bottom-nav-item i { font-size: 1.3rem; }
