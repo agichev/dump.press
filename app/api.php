@@ -797,6 +797,19 @@ try {
             break;
 
         /* ---------------- ЮРИДИЧЕСКИЕ ДОКУМЕНТЫ ---------------- */
+        case 'resolve_username': {
+            $username = trim($_GET['username'] ?? '');
+            if (!$username) throw new Exception('Username is required');
+            $stmt = $pdo->prepare("SELECT id, username, avatar_url FROM users WHERE username = ? LIMIT 1");
+            $stmt->execute([$username]);
+            $user = $stmt->fetch();
+            if (!$user) throw new Exception('Пользователь не найден');
+            $user['username'] = htmlspecialchars($user['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $user['avatar_url'] = htmlspecialchars($user['avatar_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            echo json_encode(['success' => true, 'id' => (int)$user['id'], 'username' => $user['username'], 'avatar_url' => $user['avatar_url']]);
+            break;
+        }
+
         case 'legal': {
             $slug = preg_replace('/[^a-z0-9-]/', '', strtolower(trim($_GET['doc'] ?? '')));
             $doc = getLegalDoc($slug);

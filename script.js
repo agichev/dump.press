@@ -138,6 +138,9 @@
             
             const hashRegex = /(^|\s)(#[a-zA-Zа-яА-ЯёЁ0-9_]+)/g;
             safeText = safeText.replace(hashRegex, '$1<span class="hashtag" onclick="event.stopPropagation(); triggerHashtagSearch(\'$2\')">$2</span>');
+
+            const mentionRegex = /(^|\s)(@[a-zA-Zа-яА-ЯёЁ0-9_]+)/g;
+            safeText = safeText.replace(mentionRegex, '$1<span class="mention" onclick="event.stopPropagation(); triggerMentionProfile(\'$2\')">$2</span>');
             return safeText;
         };
 
@@ -145,6 +148,17 @@
             document.getElementById('searchInput').value = tag;
             openModal('searchModal', 'searchInput');
             performSearch();
+        };
+
+        window.triggerMentionProfile = async (mention) => {
+            const username = mention.startsWith('@') ? mention.slice(1) : mention;
+            try {
+                const res = await fetch(apiCall('resolve_username') + `&username=${encodeURIComponent(username)}`);
+                const data = await res.json();
+                if (data.id) {
+                    navigate('/profile/' + data.id);
+                }
+            } catch (e) {}
         };
 
         const getPlural = (number, one, two, five) => {
