@@ -199,8 +199,8 @@ $is_dump_app = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
 
         <div class="nav-tabs hidden" id="feedTabs">
             <div id="tabIndicator" class="tab-indicator"></div>
-            <button onclick="setFeedType('all')" id="tab-all" class="nav-tab active">Глобально</button>
-            <button onclick="setFeedType('following')" id="tab-following" class="nav-tab">Подписки</button>
+            <button onclick="handleFeedTabClick('all')" id="tab-all" class="nav-tab active">Глобально</button>
+            <button onclick="handleFeedTabClick('following')" id="tab-following" class="nav-tab">Подписки</button>
         </div>
         <div class="flex gap-2">
             <button onclick="openSearch()" class="icon-btn"><i class="ph ph-magnifying-glass"></i></button>

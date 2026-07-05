@@ -12,6 +12,7 @@
         let currentFeedIndex = 0;
         let isScrollingFeed = false;
         let touchStartX = 0;
+        let startX = 0;
         let currentX = 0;
         let isDragging = false;
         let wheelTimeout;
@@ -24,6 +25,9 @@
         let pendingAuth = null;
         let turnstileWidgetId = null;
         let captchaToken = '';
+
+        // Mobile app detection - check for DumpApp in user agent
+        const isDumpApp = navigator.userAgent.includes('DumpApp');
 
         const GUEST_VIEWED_KEY = 'guest_viewed_posts';
         function getGuestViewed() {
@@ -754,82 +758,20 @@
             }
         }, {passive: true});
 
-        /* ─── Pull-to-Refresh ─── */
-        let ptrStartY = 0, ptrCurrentY = 0, ptrActive = false, ptrTriggered = false;
-        const PTR_THRESHOLD = 80;
-        let ptrEl = null;
+        
 
-        function ensurePtrEl() {
-            if (!ptrEl || !ptrEl.parentNode) {
-                ptrEl = document.createElement('div');
-                ptrEl.id = 'ptrIndicator';
-                ptrEl.innerHTML = '<i class="ph ph-arrow-down" style="font-size:1.5rem;"></i>';
-                document.body.prepend(ptrEl);
-            }
-            return ptrEl;
-        }
-
-        function ptrTouchStart(e) {
-            if (!feedViewEl.classList.contains('active')) return;
-            if (currentFeedIndex !== 0) return;
-            if (e.target.closest('.scrollable-overlay') || e.target.closest('.post-text-content')) return;
-            ptrStartY = e.touches[0].clientY;
-            ptrCurrentY = ptrStartY;
-            ptrActive = true;
-            ptrTriggered = false;
-        }
-
-        function ptrTouchMove(e) {
-            if (!ptrActive) return;
-            ptrCurrentY = e.touches[0].clientY;
-            const diff = ptrCurrentY - ptrStartY;
-            if (diff <= 0) { resetPtr(); return; }
-
-            const el = ensurePtrEl();
-            const pullDist = Math.min(diff * 0.5, PTR_THRESHOLD + 30);
-            el.style.height = pullDist + 'px';
-
-            if (diff >= PTR_THRESHOLD && !ptrTriggered) {
-                ptrTriggered = true;
-                el.innerHTML = '<i class="ph ph-spinner spin" style="font-size:1.2rem;"></i> <span style="font-weight:600;">Обновление...</span>';
-                setTimeout(() => {
-                    ptrActive = false;
-                    el.style.height = '0';
-                    loadFeed();
-                }, 200);
-            } else if (!ptrTriggered) {
-                const progress = Math.min(diff / PTR_THRESHOLD, 1);
-                el.innerHTML = '<i class="ph ph-arrow-down" style="font-size:1.5rem;transform:rotate(' + (progress * 180) + 'deg);transition:transform 0.1s;"></i> <span style="font-weight:500;">Потяните для обновления</span>';
-            }
-        }
-
-        function ptrTouchEnd(e) {
-            if (!ptrActive) return;
-            ptrActive = false;
-            const el = document.getElementById('ptrIndicator');
-            if (el && !ptrTriggered) {
-                el.style.height = '0';
-            }
-            ptrTriggered = false;
-        }
-
-        function resetPtr() {
-            ptrActive = false;
-            const el = document.getElementById('ptrIndicator');
-            if (el) el.style.height = '0';
-        }
-
-        feedViewEl.addEventListener('touchstart', ptrTouchStart, {passive: true});
-        feedViewEl.addEventListener('touchmove', ptrTouchMove, {passive: true});
-        feedViewEl.addEventListener('touchend', ptrTouchEnd);
+        let touchStartY = 0;
+        let swipeDirection = null; // 'horizontal', 'vertical', null
 
         function handleSwipeStart(e) {
             if (!feedViewEl.classList.contains('active') || isScrollingFeed) return;
             
-            if (e.target.closest('button') || e.target.closest('.action-btn') || e.target.closest('.scrollable-overlay') || e.target.closest('.post-author') || e.target.closest('a') || e.target.closest('.hashtag')) return;
+            if (e.target.closest('button') || e.target.closest('.action-btn') || e.target.closest('.scrollable-overlay') || e.target.closest('.post-author') || e.target.closest('a') || e.target.closest('.hashtag') || e.target.closest('.comment-input-wrapper')) return;
             
             isDragging = true;
+            swipeDirection = null;
             startX = e.type.includes('mouse') ? e.pageX : e.touches[0].clientX;
+            touchStartY = e.type.includes('mouse') ? e.pageY : e.touches[0].clientY;
             currentX = startX;
             
             const wrapper = document.getElementById('feedWrapper');
@@ -838,10 +780,25 @@
 
         function handleSwipeMove(e) {
             if (!isDragging) return;
-            currentX = e.type.includes('mouse') ? e.pageX : e.touches[0].clientX;
-            const diff = currentX - startX;
+            const clientX = e.type.includes('mouse') ? e.pageX : e.touches[0].clientX;
+            const clientY = e.type.includes('mouse') ? e.pageY : e.touches[0].clientY;
+            const diffX = clientX - startX;
+            const diffY = clientY - touchStartY;
+
+            if (!swipeDirection) {
+                if (Math.abs(diffX) < 10 && Math.abs(diffY) < 10) return;
+                swipeDirection = Math.abs(diffX) > Math.abs(diffY) ? 'horizontal' : 'vertical';
+            }
+
+            if (swipeDirection === 'vertical') {
+                isDragging = false;
+                return;
+            }
+
+            e.preventDefault();
+            currentX = clientX;
             const wrapper = document.getElementById('feedWrapper');
-            if (wrapper) wrapper.style.transform = `translateX(calc(-${currentFeedIndex * 100}vw + ${diff}px))`;
+            if (wrapper) wrapper.style.transform = `translateX(calc(-${currentFeedIndex * 100}vw + ${diffX}px))`;
         }
 
         function handleSwipeEnd(e) {
@@ -859,10 +816,11 @@
                 goToFeedPost(currentFeedIndex);
             }
             currentX = startX;
+            swipeDirection = null;
         }
 
         feedViewEl.addEventListener('touchstart', handleSwipeStart, {passive: true});
-        feedViewEl.addEventListener('touchmove', handleSwipeMove, {passive: true});
+        feedViewEl.addEventListener('touchmove', handleSwipeMove, {passive: false});
         feedViewEl.addEventListener('touchend', handleSwipeEnd);
         
         feedViewEl.addEventListener('mousedown', handleSwipeStart);
@@ -1211,13 +1169,17 @@
                 if(data.sessions) {
                     list.innerHTML = data.sessions.map(s => {
                         let device = "Неизвестное устройство";
-                        if(s.user_agent.includes('Windows')) device = "Windows";
+                        let isApp = s.user_agent.includes('DumpApp');
+                        
+                        if(isApp) device = "Мобильное приложение";
+                        else if(s.user_agent.includes('Windows')) device = "Windows";
                         else if(s.user_agent.includes('Mac OS')) device = "MacOS";
                         else if(s.user_agent.includes('Android')) device = "Android";
                         else if(s.user_agent.includes('iPhone') || s.user_agent.includes('iPad')) device = "iOS";
                         
                         let browser = "";
-                        if(s.user_agent.includes('Chrome')) browser = "Chrome";
+                        if(isApp) browser = "Dump";
+                        else if(s.user_agent.includes('Chrome')) browser = "Chrome";
                         else if(s.user_agent.includes('Safari')) browser = "Safari";
                         else if(s.user_agent.includes('Firefox')) browser = "Firefox";
                         
@@ -1651,6 +1613,15 @@
             initTabIndicator();
             loadFeed();
         }
+
+        window.handleFeedTabClick = function(type) {
+            if (activeFeedType === type) {
+                loadFeed();
+                showToast('Лента обновлена');
+            } else {
+                setFeedType(type);
+            }
+        };
 
         async function loadFeed() {
             const container = document.getElementById('feedView');
