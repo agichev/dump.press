@@ -988,7 +988,53 @@
             navigate('/login', true);
         }
 
+        function compressImage(file) {
+            return new Promise((resolve) => {
+                if (!file.type.startsWith('image/') || file.type === 'image/gif' || file.type === 'image/svg+xml' || file.type === 'image/webp') {
+                    resolve(file); return;
+                }
+                const img = new Image();
+                const url = URL.createObjectURL(file);
+                img.onload = () => {
+                    URL.revokeObjectURL(url);
+                    const MAX_DIM = 1200;
+                    const TARGET_SIZE = 10 * 1024;
+                    let w = img.width, h = img.height;
+                    if (w > MAX_DIM || h > MAX_DIM) {
+                        if (w > h) { h = Math.round(h * MAX_DIM / w); w = MAX_DIM; }
+                        else { w = Math.round(w * MAX_DIM / h); h = MAX_DIM; }
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w; canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.imageSmoothingQuality = 'high';
+                    ctx.drawImage(img, 0, 0, w, h);
+
+                    function tryQuality(lo, hi, bestBlob) {
+                        if (hi - lo < 0.02) {
+                            const ext = file.name.split('.').slice(0, -1).join('.') || 'image';
+                            const result = bestBlob.size > 0 && bestBlob.size < file.size ? new File([bestBlob], `${ext}.jpg`, { type: 'image/jpeg' }) : file;
+                            resolve(result); return;
+                        }
+                        const mid = (lo + hi) / 2;
+                        canvas.toBlob((blob) => {
+                            if (!blob) { resolve(file); return; }
+                            if (blob.size <= TARGET_SIZE) {
+                                tryQuality(mid, hi, blob);
+                            } else {
+                                tryQuality(lo, mid, bestBlob.size === 0 || blob.size < bestBlob.size ? blob : bestBlob);
+                            }
+                        }, 'image/jpeg', mid);
+                    }
+                    tryQuality(0.05, 0.95, new Blob());
+                };
+                img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+                img.src = url;
+            });
+        }
+
         async function uploadToImgBB(file) {
+            file = await compressImage(file);
             const fd = new FormData(); 
             fd.append('image', file);
             fd.append('csrf_token', csrfToken);
@@ -1003,7 +1049,7 @@
         }
 
         function openSettings() {
-            document.getElementById('settingsAvatarPreview').src = currentUser.avatar_url || `https://ui-avatars.com/api/?name=${currentUser.username}&background=random`;
+            document.getElementById('settingsAvatarPreview').src = getProxyUrl(currentUser.avatar_url || `https://ui-avatars.com/api/?name=${currentUser.username}&background=random`);
             document.getElementById('settingsBio').value = currentUser.bio || '';
             document.getElementById('accUsername').value = currentUser.username || '';
             document.getElementById('accEmail').value = currentUser.email || '';
@@ -1264,7 +1310,7 @@
                     html += `<div class="search-section-title smooth-fade-in mt-4">Пользователи</div>`;
                     html += data.users.map(u => `
                         <div class="search-result-item smooth-fade-in mb-1" onclick="navigate('/profile/${u.id}'); closeModal('searchModal');">
-                            <img src="${u.avatar_url || 'https://ui-avatars.com/api/?name='+u.username+'&background=random'}" class="search-result-img">
+                            <img src="${getProxyUrl(u.avatar_url || 'https://ui-avatars.com/api/?name='+u.username+'&background=random')}" class="search-result-img">
                             <div class="font-bold flex-1">${u.username}</div>
                         </div>
                     `).join('');
@@ -1345,7 +1391,7 @@
                 const res = await fetch(apiCall('user_profile') + `&id=${targetId}`);
                 const data = await res.json();
                 const p = data.profile;
-                const avatarUrl = p.avatar_url || `https://ui-avatars.com/api/?name=${p.username}&background=random`;
+                const avatarUrl = getProxyUrl(p.avatar_url || `https://ui-avatars.com/api/?name=${p.username}&background=random`);
                 
                 window.currentProfilePosts = data.posts || [];
                 window.currentProfileBookmarks = data.bookmarks || [];
@@ -1441,7 +1487,7 @@
                 const data = await res.json();
                 if (data.success && data.following.length > 0) {
                     list.innerHTML = data.following.map(u => {
-                        const avatar = u.avatar_url || `https://ui-avatars.com/api/?name=${u.username}&background=random`;
+                        const avatar = getProxyUrl(u.avatar_url || `https://ui-avatars.com/api/?name=${u.username}&background=random`);
                         return `<div class="search-result-item smooth-fade-in" onclick="navigate('/profile/${u.id}'); closeModal('followingModal');">
                             <img src="${avatar}" class="search-result-img">
                             <div class="font-bold flex-1">${u.username}</div>
@@ -1804,7 +1850,7 @@
         function createPostElement(post) {
             const div = document.createElement('div');
             div.className = 'post-card smooth-fade-in'; div.dataset.id = post.id; div.dataset.slug = post.slug;
-            const avatar = post.avatar_url || `https://ui-avatars.com/api/?name=${post.username}&background=random`;
+            const avatar = getProxyUrl(post.avatar_url || `https://ui-avatars.com/api/?name=${post.username}&background=random`);
             const hasImages = post.image_url && post.image_url !== '';
             const isMyPost = currentUser && post.user_id === currentUser.id;
             const isLongText = post.content && post.content.length > 250;
@@ -1929,7 +1975,7 @@
                 if (!area) return;
                 const c = comments[Math.floor(Math.random() * comments.length)];
                 const div = document.createElement('div'); div.className = 'floating-comment'; div.style.left = `${10 + Math.random() * 40}%`; 
-                div.innerHTML = `<img src="${c.avatar_url || 'https://ui-avatars.com/api/?name='+c.username+'&background=random'}"><div class="fc-text"><span class="fc-name">${c.username}</span><span class="fc-msg">${c.content}</span></div>`;
+                div.innerHTML = `<img src="${getProxyUrl(c.avatar_url || 'https://ui-avatars.com/api/?name='+c.username+'&background=random')}"><div class="fc-text"><span class="fc-name">${c.username}</span><span class="fc-msg">${c.content}</span></div>`;
                 area.appendChild(div); setTimeout(() => { if(div.parentNode) div.remove(); }, 5000);
             }, 3000 + Math.random() * 2000); 
         }
@@ -1955,7 +2001,7 @@
             
             return `
             <div class="comment-item smooth-fade-in ${isReply ? 'is-reply' : ''}" id="comment-node-${c.id}">
-                <img src="${c.avatar_url || 'https://ui-avatars.com/api/?name='+c.username+'&background=random'}" onclick="navigate('/profile/${c.user_id}'); closeModal('commentsModal');">
+                <img src="${getProxyUrl(c.avatar_url || 'https://ui-avatars.com/api/?name='+c.username+'&background=random')}" onclick="navigate('/profile/${c.user_id}'); closeModal('commentsModal');">
                 <div class="comment-content">
                     <div class="comment-header">
                         <div>

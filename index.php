@@ -59,7 +59,7 @@ try {
             $bio_clean = trim(preg_replace('/\s+/', ' ', strip_tags((string)$user['bio'])));
             $seo_desc = $bio_clean ? (mb_substr($bio_clean, 0, 150) . '...') : "Смотрите публикации пользователя @" . $user['username'] . " на Dump.";
             if (!empty($user['avatar_url'])) {
-                $seo_image = trim($user['avatar_url']);
+                $seo_image = getProxyUrl(trim($user['avatar_url']));
             }
         }
     } elseif (isset($path_parts[0]) && $path_parts[0] === 'legal' && !empty($path_parts[1])) {
