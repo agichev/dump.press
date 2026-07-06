@@ -331,6 +331,7 @@
             if (path.startsWith('/profile') && !isGuest) {
                 switchView('profileView');
                 if(feedTabs) feedTabs.classList.add('hidden');
+                if(nav) nav.classList.add('show-notif-btn');
                 const parts = path.split('/');
                 const uid = (parts[parts.length - 1] && parts[parts.length - 1] !== 'profile') ? parseInt(parts[parts.length - 1]) : currentUser.id;
                 openProfileData(uid);
@@ -340,11 +341,13 @@
             else if ((path === '/notifications' || path === '/notifications/') && !isGuest) {
                 switchView('notificationsView');
                 if(feedTabs) feedTabs.classList.add('hidden');
+                if(nav) nav.classList.remove('show-notif-btn');
                 loadNotifications();
                 updateBottomNav();
             }
             else if (path === '/create' && !isGuest) {
                 if(feedTabs) feedTabs.classList.add('hidden');
+                if(nav) nav.classList.remove('show-notif-btn');
                 openModal('createView', 'postContent');
                 updateBottomNav();
             } 
@@ -352,6 +355,7 @@
                 switchView('feedView');
                 if(feedTabs) feedTabs.classList.remove('hidden');
                 if(isGuest && feedTabs) feedTabs.classList.add('hidden'); 
+                if(nav) nav.classList.remove('show-notif-btn');
                 initTabIndicator(); 
                 updateBottomNav();
                 
@@ -1413,7 +1417,7 @@
                 
                 let actionBtnHTML = '';
                 if (isMe) {
-                    actionBtnHTML = `<div class="flex gap-2 items-center"><button onclick="openSettings()" class="vc-btn vc-btn-outline flex items-center justify-center gap-2" style="padding: 8px 24px; width:auto; border-radius:99px; font-size:0.9rem;"><i class="ph ph-gear"></i> Настройки</button><button onclick="navigate('/notifications')" class="vc-btn vc-btn-outline flex items-center justify-center" style="padding: 8px 12px; width:auto; border-radius:99px; font-size:1.1rem; position:relative;" id="profileNotifBtn"><i class="ph ph-bell"></i><span id="profileNotifBadge" class="notif-badge-profile hidden">0</span></button></div>`;
+                    actionBtnHTML = `<button onclick="openSettings()" class="vc-btn vc-btn-outline flex items-center justify-center gap-2" style="padding: 8px 24px; width:auto; border-radius:99px; font-size:0.9rem;"><i class="ph ph-gear"></i> Настройки</button>`;
                 } else {
                     const isFollowed = p.is_followed > 0;
                     actionBtnHTML = `<button onclick="toggleFollow(${p.id}, this)" class="vc-btn ${isFollowed ? 'vc-btn-outline' : ''}" style="padding: 8px 24px; width:auto; border-radius:99px; font-size:0.9rem;">${isFollowed ? 'Вы подписаны' : 'Подписаться'}</button>`;
@@ -1739,15 +1743,12 @@
 
         function updateNotifBadge(count) {
             const badge = document.getElementById('notifBadge');
-            const profileBadge = document.getElementById('profileNotifBadge');
             const profileIcon = document.querySelector('[data-nav="profile"] i');
             if (count > 0) {
                 if (badge) { badge.textContent = count > 99 ? '99+' : count; badge.classList.remove('hidden'); }
-                if (profileBadge) { profileBadge.textContent = count > 99 ? '99+' : count; profileBadge.classList.remove('hidden'); }
                 if (profileIcon) profileIcon.classList.add('notif-pulse');
             } else {
                 if (badge) badge.classList.add('hidden');
-                if (profileBadge) profileBadge.classList.add('hidden');
                 if (profileIcon) profileIcon.classList.remove('notif-pulse');
             }
         }
