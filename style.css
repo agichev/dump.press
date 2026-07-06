@@ -238,9 +238,9 @@
         .modal-bottom .modal-content { background: var(--surface); border-radius: 24px 24px 0 0; height: 80dvh; max-height: 800px; display: flex; flex-direction: column; padding: 0; transform: translateY(100%); max-width: 600px; }
         .modal-overlay.open.modal-bottom .modal-content { transform: translateY(0); }
 
-        .settings-tabs { display: flex; border-bottom: 1px solid var(--surface-hover); margin-bottom: 1.5rem; overflow-x: auto; scrollbar-width: none; }
+        .settings-tabs { display: flex; border-bottom: 1px solid var(--surface-hover); margin-bottom: 1.5rem; overflow-x: auto; scrollbar-width: none; flex-shrink: 0; }
         .settings-tabs::-webkit-scrollbar { display: none; }
-        .settings-tab { padding: 12px 20px; font-weight: 600; color: var(--text-muted); position: relative; white-space: nowrap; }
+        .settings-tab { padding: 12px 16px; font-weight: 600; color: var(--text-muted); position: relative; white-space: nowrap; }
         .settings-tab.active { color: var(--text-main); }
         .settings-tab.active::after { content: ''; position: absolute; bottom: -1px; left: 0; width: 100%; height: 2px; background: var(--accent); border-radius: 2px; }
 
@@ -311,12 +311,12 @@
         .add-more-grid-item { border: 2px dashed var(--surface-hover); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: var(--text-muted); cursor: pointer; border-radius: 8px; flex-shrink: 0; width: 80px; height: 80px; transition: var(--transition); }
         .add-more-grid-item:hover { background: var(--surface-hover); color: white; border-color: transparent; }
 
-        .toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+        .toggle-switch { position: relative; display: inline-block; width: 36px; height: 20px; flex-shrink: 0; }
         .toggle-switch input { opacity: 0; width: 0; height: 0; }
-        .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--surface-hover); transition: .4s; border-radius: 24px; }
-        .toggle-slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: var(--text-muted); transition: .4s cubic-bezier(0.25, 1, 0.5, 1); border-radius: 50%; }
+        .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--surface-hover); transition: .4s; border-radius: 20px; }
+        .toggle-slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: var(--text-muted); transition: .4s cubic-bezier(0.25, 1, 0.5, 1); border-radius: 50%; }
         .toggle-switch input:checked + .toggle-slider { background-color: var(--text-main); }
-        .toggle-switch input:checked + .toggle-slider:before { transform: translateX(20px); background-color: var(--bg); }
+        .toggle-switch input:checked + .toggle-slider:before { transform: translateX(16px); background-color: var(--bg); }
         .toggle-switch input:disabled + .toggle-slider { opacity: 0.5; cursor: not-allowed; }
 
         .radio-group { display: flex; gap: 1rem; margin-bottom: 1rem; }
@@ -453,7 +453,7 @@
             .search-result-item { padding: 14px; }
             .comment-input-wrapper textarea { font-size: 0.9rem; padding: 10px 14px; }
             .auth-footer-links { font-size: 0.8rem; gap: 8px; }
-            .settings-tab { padding: 10px 14px; font-size: 0.85rem; }
+            .settings-tab { padding: 8px 12px; font-size: 0.85rem; }
 
             /* Скрываем дублирующие кнопки в топ-баре на мобилках */
             #mainNav .icon-btn:not(#navBackBtn) { display: none; }
