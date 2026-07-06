@@ -73,7 +73,8 @@ try {
         /* ---------------- АУТЕНТИФИКАЦИЯ ---------------- */
         case 'register': {
             // Капча Cloudflare Turnstile (в модалке на клиенте).
-            if (!verifyTurnstile(trim($_POST['turnstile_token'] ?? ''), getClientIp())) {
+            $is_dump_app_api = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
+            if (!$is_dump_app_api && !verifyTurnstile(trim($_POST['turnstile_token'] ?? ''), getClientIp())) {
                 throw new Exception('Проверка капчи не пройдена. Обновите страницу.');
             }
             $email = filter_var(trim($_POST['email'] ?? ''), FILTER_VALIDATE_EMAIL);
@@ -95,7 +96,8 @@ try {
         }
 
         case 'login': {
-            if (!verifyTurnstile(trim($_POST['turnstile_token'] ?? ''), getClientIp())) {
+            $is_dump_app_api = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
+            if (!$is_dump_app_api && !verifyTurnstile(trim($_POST['turnstile_token'] ?? ''), getClientIp())) {
                 throw new Exception('Проверка капчи не пройдена. Обновите страницу.');
             }
             $email = filter_var(trim($_POST['email'] ?? ''), FILTER_VALIDATE_EMAIL);

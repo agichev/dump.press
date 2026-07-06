@@ -487,7 +487,7 @@
             await __waitForIp();
 
             // Капча Cloudflare Turnstile показывается в модалке.
-            if (typeof TURNSTILE_ENABLED !== 'undefined' && TURNSTILE_ENABLED) {
+            if (typeof TURNSTILE_ENABLED !== 'undefined' && TURNSTILE_ENABLED && !isDumpApp) {
                 pendingAuth = { action, form };
                 openCaptchaModal();
                 return;
