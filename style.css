@@ -457,8 +457,9 @@
             .settings-tab { padding: 8px 12px; font-size: 0.85rem; }
 
             /* Скрываем дублирующие кнопки в топ-баре на мобилках */
-            #mainNav .icon-btn:not(#navBackBtn) { display: none; }
-            #mainNav.show-notif-btn #navNotifBtn:not(.hidden) { display: flex; }
+            #mainNav .icon-btn { display: none; }
+            #navBackBtn { display: flex; }
+            #mainNav.show-notif-btn #navNotifBtn { display: flex !important; }
             .bottom-nav { display: flex; }
             .bottom-nav.visible { display: flex; }
         }
