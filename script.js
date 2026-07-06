@@ -90,6 +90,7 @@
             const getY = (e) => e.touches ? e.touches[0].clientY : e.clientY;
             const onStart = (e) => { startY = getY(e); curY = startY; swiping = false; };
             const onMove = (e) => {
+                if (e.buttons !== undefined && e.buttons !== 1) return;
                 curY = getY(e);
                 const diff = curY - startY;
                 if (Math.abs(diff) > 5) swiping = true;
@@ -1734,22 +1735,20 @@
                 startX = getX(e);
                 swiping = false;
                 el.style.transition = 'none';
-                el.classList.remove('swiping-right');
             };
             const onMove = (e) => {
+                if (e.buttons !== undefined && e.buttons !== 1) return;
                 curX = getX(e);
                 const diff = curX - startX;
                 if (Math.abs(diff) > 5) swiping = true;
                 if (diff > 0) {
                     el.style.transform = `translateX(${diff}px)`;
                     el.style.opacity = Math.max(0, 1 - diff / 200);
-                    if (diff > 30) el.classList.add('swiping-right');
                 }
             };
             const onEnd = () => {
                 const diff = curX - startX;
                 el.style.transition = 'transform 0.3s, opacity 0.3s';
-                el.classList.remove('swiping-right');
                 if (swiping && diff > 80) {
                     el.style.transform = 'translateX(100%)';
                     el.style.opacity = '0';
