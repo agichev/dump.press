@@ -130,6 +130,23 @@ try {
 
     try { $pdo->exec("ALTER TABLE temp_auth MODIFY COLUMN code VARCHAR(64) DEFAULT ''"); } catch (PDOException $e) {}
 
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            from_user_id INT DEFAULT NULL,
+            type VARCHAR(30) NOT NULL,
+            post_id INT DEFAULT NULL,
+            post_slug VARCHAR(64) DEFAULT NULL,
+            is_read TINYINT(1) DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (from_user_id) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+            INDEX idx_notif_user (user_id, is_read, created_at)
+        );
+    ");
+
     $pdo->exec("UPDATE posts SET slug = SUBSTRING(MD5(RAND()), 1, 10) WHERE slug IS NULL OR slug = ''");
 
 } catch (PDOException $e) {

@@ -62,6 +62,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array($action, ['login', 'regis
 }
 
 try {
+    function createNotification($pdo, $user_id, $from_user_id, $type, $post_id = null, $post_slug = null, $allow_self = false) {
+        if (!$allow_self && $user_id == $from_user_id) return;
+        $stmt = $pdo->prepare("INSERT INTO notifications (user_id, from_user_id, type, post_id, post_slug) VALUES (?, ?, ?, ?, ?)");
+        $stmt->execute([$user_id, $from_user_id, $type, $post_id, $post_slug]);
+    }
+
     switch ($action) {
 
         /* ---------------- АУТЕНТИФИКАЦИЯ ---------------- */
@@ -131,6 +137,7 @@ try {
 
                 destroySession();
                 createSession($user['id']);
+                createNotification($pdo, $user['id'], $user['id'], 'login', null, null, true);
                 echo json_encode(['success' => true, 'require_2fa' => false]);
             } else {
                 usleep(random_int(300000, 500000));
@@ -161,6 +168,7 @@ try {
                 $pdo->prepare("DELETE FROM temp_auth WHERE token = ?")->execute([$token]);
                 destroySession();
                 createSession($authData['user_id']);
+                createNotification($pdo, $authData['user_id'], $authData['user_id'], 'login', null, null, true);
                 echo json_encode(['success' => true]);
             } else {
                 throw new Exception('Неверный код.');
@@ -399,6 +407,7 @@ try {
                 echo json_encode(['followed' => false]);
             } else {
                 $pdo->prepare("INSERT INTO follows (follower_id, following_id) VALUES (?, ?)")->execute([$follower_id, $following_id]);
+                createNotification($pdo, $following_id, $follower_id, 'follow');
                 echo json_encode(['followed' => true]);
             }
             break;
@@ -621,6 +630,13 @@ try {
 
             $stmt = $pdo->prepare("INSERT INTO posts (user_id, content, image_url, slug) VALUES (?, ?, ?, ?)");
             $stmt->execute([$current_session['user_id'], $content, $image_url, $slug]);
+            $new_post_id = (int)$pdo->lastInsertId();
+            $stmt_followers = $pdo->prepare("SELECT follower_id FROM follows WHERE following_id = ?");
+            $stmt_followers->execute([$current_session['user_id']]);
+            $followers = $stmt_followers->fetchAll(PDO::FETCH_COLUMN);
+            foreach ($followers as $fid) {
+                createNotification($pdo, (int)$fid, (int)$current_session['user_id'], 'new_post', $new_post_id, $slug);
+            }
             echo json_encode(['success' => true, 'slug' => $slug]);
             break;
 
@@ -643,6 +659,12 @@ try {
                 echo json_encode(['liked' => false]);
             } else {
                 $pdo->prepare("INSERT INTO likes (user_id, post_id) VALUES (?, ?)")->execute([$user_id, $post_id]);
+                $stmt_post = $pdo->prepare("SELECT user_id, slug FROM posts WHERE id = ?");
+                $stmt_post->execute([$post_id]);
+                $post_info = $stmt_post->fetch();
+                if ($post_info) {
+                    createNotification($pdo, (int)$post_info['user_id'], $user_id, 'like', $post_id, $post_info['slug']);
+                }
                 echo json_encode(['liked' => true]);
             }
             break;
@@ -707,6 +729,12 @@ try {
 
             $stmt = $pdo->prepare("INSERT INTO comments (user_id, post_id, content, image_url, parent_id) VALUES (?, ?, ?, ?, ?)");
             $stmt->execute([$current_session['user_id'], $post_id, $content, $image_url, $parent_id]);
+            $stmt_post = $pdo->prepare("SELECT user_id, slug FROM posts WHERE id = ?");
+            $stmt_post->execute([$post_id]);
+            $post_info = $stmt_post->fetch();
+            if ($post_info) {
+                createNotification($pdo, (int)$post_info['user_id'], (int)$current_session['user_id'], 'comment', $post_id, $post_info['slug']);
+            }
             echo json_encode(['success' => true]);
             break;
 
@@ -845,6 +873,44 @@ try {
             ]);
             break;
         }
+
+        /* ---------------- УВЕДОМЛЕНИЯ ---------------- */
+        case 'get_notifications':
+            requireAuth();
+            $stmt = $pdo->prepare("
+                SELECT n.id, n.type, n.post_id, n.post_slug, n.is_read, n.created_at,
+                    u.id as from_id, u.username as from_username, u.avatar_url as from_avatar_url
+                FROM notifications n
+                LEFT JOIN users u ON n.from_user_id = u.id
+                WHERE n.user_id = ?
+                ORDER BY n.created_at DESC
+                LIMIT 50
+            ");
+            $stmt->execute([$current_session['user_id']]);
+            $notifications = $stmt->fetchAll();
+            foreach ($notifications as &$n) {
+                $n['from_username'] = htmlspecialchars($n['from_username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                $n['from_avatar_url'] = htmlspecialchars($n['from_avatar_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                $n['post_slug'] = htmlspecialchars($n['post_slug'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            }
+            $stmt_unread = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0");
+            $stmt_unread->execute([$current_session['user_id']]);
+            $unread_count = (int)$stmt_unread->fetchColumn();
+            echo json_encode(['success' => true, 'notifications' => $notifications, 'unread_count' => $unread_count]);
+            break;
+
+        case 'mark_notifications_read':
+            requireAuth();
+            $pdo->prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ?")->execute([$current_session['user_id']]);
+            echo json_encode(['success' => true]);
+            break;
+
+        case 'get_unread_count':
+            requireAuth();
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0");
+            $stmt->execute([$current_session['user_id']]);
+            echo json_encode(['success' => true, 'unread_count' => (int)$stmt->fetchColumn()]);
+            break;
 
         /* ---------------- SITEMAP / ROBOTS ---------------- */
         case 'sitemap':

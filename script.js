@@ -8,6 +8,7 @@
         let pendingPostImageFiles = [];
         let localBookmarksState = {};
         let replyingToCommentId = null;
+        let notifPollInterval = null;
 
         let currentFeedIndex = 0;
         let isScrollingFeed = false;
@@ -235,6 +236,9 @@
             } else if (nav === 'create') {
                 if (!currentUser) { navigate('/login'); return; }
                 navigate('/create');
+            } else if (nav === 'notifications') {
+                if (!currentUser) { navigate('/login'); return; }
+                openNotifications();
             } else if (nav === 'profile') {
                 if (!currentUser) { navigate('/login'); return; }
                 navigate('/profile');
@@ -316,10 +320,14 @@
                 document.getElementById('navUserBtn').onclick = () => navigate('/login');
                 document.getElementById('navUserBtn').innerHTML = '<i class="ph ph-sign-in"></i>';
                 document.getElementById('navCreateBtn').classList.add('hidden');
+                document.getElementById('navNotifBtn').classList.add('hidden');
+                stopNotifPolling();
             } else {
                 document.getElementById('navUserBtn').onclick = () => navigate('/profile');
                 document.getElementById('navUserBtn').innerHTML = '<i class="ph ph-user"></i>';
                 document.getElementById('navCreateBtn').classList.remove('hidden');
+                document.getElementById('navNotifBtn').classList.remove('hidden');
+                startNotifPolling();
             }
             
             if (path.startsWith('/profile') && !isGuest) {
@@ -447,7 +455,7 @@
                 if (legal && legal.classList.contains('open')) { closeLegal(); return; }
                 const captcha = document.getElementById('captchaModal');
                 if (captcha && captcha.classList.contains('open')) { cancelCaptcha(); return; }
-                ['postOptionsModal', 'commentsModal', 'settingsModal', 'cropModal', 'searchModal', 'passwordModal', 'confirmModal', 'textWarningModal', 'tfaSettingsModal', 'tfaLoginModal', 'followingModal'].forEach(id => {
+                ['postOptionsModal', 'commentsModal', 'settingsModal', 'cropModal', 'searchModal', 'passwordModal', 'confirmModal', 'textWarningModal', 'tfaSettingsModal', 'tfaLoginModal', 'followingModal', 'notificationsModal'].forEach(id => {
                     const m = document.getElementById(id);
                     if(m && m.classList.contains('open')) closeModal(id);
                 });
@@ -983,6 +991,7 @@
             const fd = new FormData(); fd.append('csrf_token', csrfToken);
             await fetch(apiCall('logout'), { method: 'POST', body: fd });
             currentUser = null; csrfToken = ''; postCommentsCache = {};
+            stopNotifPolling();
             document.getElementById('feedView').innerHTML = ''; 
             closeModal('settingsModal');
             navigate('/login', true);
@@ -1505,6 +1514,150 @@
             }
         }
         window.openFollowingModal = openFollowingModal;
+
+        function getNotifText(type, username) {
+            switch(type) {
+                case 'like': return `<b>${username}</b> поставил(а) лайк на ваш пост`;
+                case 'comment': return `<b>${username}</b> написал(а) комментарий к вашему посту`;
+                case 'follow': return `<b>${username}</b> подписался(-ась) на вас`;
+                case 'new_post': return `<b>${username}</b> опубликовал(а) новый пост`;
+                case 'login': return `Выполнен вход в ваш аккаунт`;
+                default: return 'Новое уведомление';
+            }
+        }
+
+        function getNotifIcon(type) {
+            switch(type) {
+                case 'like': return 'ph-fill ph-heart';
+                case 'comment': return 'ph ph-chat-circle';
+                case 'follow': return 'ph ph-user-plus';
+                case 'new_post': return 'ph ph-article';
+                case 'login': return 'ph ph-sign-in';
+                default: return 'ph ph-bell';
+            }
+        }
+
+        function getNotifIconColor(type) {
+            switch(type) {
+                case 'like': return 'var(--error)';
+                case 'comment': return '#60a5fa';
+                case 'follow': return '#34d399';
+                case 'new_post': return '#f5a623';
+                case 'login': return '#a78bfa';
+                default: return 'var(--text-muted)';
+            }
+        }
+
+        function handleNotifClick(n) {
+            closeModal('notificationsModal');
+            if (n.type === 'comment') {
+                if (n.post_slug) {
+                    navigate('/post/' + n.post_slug);
+                    setTimeout(() => {
+                        const postCard = document.querySelector(`.post-card[data-slug="${n.post_slug}"]`);
+                        if (postCard) {
+                            const postId = postCard.dataset.id;
+                            openComments(parseInt(postId), n.post_slug);
+                        }
+                    }, 600);
+                }
+            } else if (n.type === 'like') {
+                if (n.from_id) navigate('/profile/' + n.from_id);
+            } else if (n.type === 'follow') {
+                if (n.from_id) navigate('/profile/' + n.from_id);
+            } else if (n.type === 'new_post') {
+                if (n.post_slug) navigate('/post/' + n.post_slug);
+                else if (n.from_id) navigate('/profile/' + n.from_id);
+            } else if (n.type === 'login') {
+                navigate('/profile');
+                setTimeout(() => { openSettings(); setTimeout(() => switchSettingsTab('sessions'), 100); }, 300);
+            }
+        }
+
+        async function openNotifications() {
+            if (!currentUser) return;
+            const list = document.getElementById('notificationsList');
+            list.innerHTML = '<div class="loader-screen" style="min-height: 20vh;"><i class="ph ph-circle-notch spin" style="font-size: 2.5rem; color: var(--text-muted);"></i></div>';
+            openModal('notificationsModal');
+            try {
+                const res = await fetch(apiCall('get_notifications'));
+                const data = await res.json();
+                if (data.success) {
+                    renderNotificationsList(data.notifications);
+                    if (data.unread_count > 0) {
+                        fetch(apiCall('mark_notifications_read'), { method: 'POST', body: 'csrf_token=' + encodeURIComponent(csrfToken), headers: {'Content-Type': 'application/x-www-form-urlencoded'} });
+                        updateNotifBadge(0);
+                    }
+                }
+            } catch(e) {
+                list.innerHTML = '<div class="empty-state"><i class="ph ph-warning"></i><p>Ошибка загрузки</p></div>';
+            }
+        }
+        window.openNotifications = openNotifications;
+
+        function renderNotificationsList(notifications) {
+            const list = document.getElementById('notificationsList');
+            if (!notifications || notifications.length === 0) {
+                list.innerHTML = '<div class="empty-state smooth-fade-in"><i class="ph ph-bell-slash"></i><p>Нет уведомлений</p></div>';
+                return;
+            }
+            window._notifData = {};
+            list.innerHTML = notifications.map((n, i) => {
+                window._notifData[i] = n;
+                const avatar = n.from_avatar_url ? getProxyUrl(n.from_avatar_url) : (n.from_username ? getProxyUrl('https://ui-avatars.com/api/?name=' + n.from_username + '&background=random') : '');
+                const iconClass = getNotifIcon(n.type);
+                const iconColor = getNotifIconColor(n.type);
+                const text = getNotifText(n.type, n.from_username || 'Кто-то');
+                const unreadClass = n.is_read == 0 ? 'notif-unread' : '';
+                const avatarHtml = avatar ? `<img src="${avatar}" class="notif-avatar" loading="lazy">` : `<div class="notif-avatar-placeholder"><i class="${iconClass}" style="color:${iconColor};font-size:1.2rem;"></i></div>`;
+                return `<div class="notif-item smooth-fade-in ${unreadClass}" data-notif-idx="${i}">
+                    ${avatarHtml}
+                    <div class="notif-body">
+                        <div class="notif-text">${text}</div>
+                        <div class="notif-time">${timeAgo(n.created_at)}</div>
+                    </div>
+                    <div class="notif-icon-indicator" style="color:${iconColor};"><i class="${iconClass}"></i></div>
+                </div>`;
+            }).join('');
+            list.querySelectorAll('.notif-item').forEach(el => {
+                el.addEventListener('click', () => {
+                    const idx = parseInt(el.dataset.notifIdx);
+                    if (window._notifData[idx]) handleNotifClick(window._notifData[idx]);
+                });
+            });
+        }
+
+        function updateNotifBadge(count) {
+            const badge = document.getElementById('notifBadge');
+            const badgeBottom = document.getElementById('notifBadgeBottom');
+            if (count > 0) {
+                if (badge) { badge.textContent = count > 99 ? '99+' : count; badge.classList.remove('hidden'); }
+                if (badgeBottom) { badgeBottom.textContent = count > 99 ? '99+' : count; badgeBottom.classList.remove('hidden'); }
+            } else {
+                if (badge) badge.classList.add('hidden');
+                if (badgeBottom) badgeBottom.classList.add('hidden');
+            }
+        }
+
+        async function pollUnreadCount() {
+            if (!currentUser) return;
+            try {
+                const res = await fetch(apiCall('get_unread_count'));
+                const data = await res.json();
+                if (data.success) updateNotifBadge(data.unread_count);
+            } catch(e) {}
+        }
+
+        function startNotifPolling() {
+            stopNotifPolling();
+            pollUnreadCount();
+            notifPollInterval = setInterval(pollUnreadCount, 30000);
+        }
+
+        function stopNotifPolling() {
+            if (notifPollInterval) { clearInterval(notifPollInterval); notifPollInterval = null; }
+            updateNotifBadge(0);
+        }
 
         function processPostImageFiles(files) {
             if (!files.length) return;
