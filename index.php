@@ -342,10 +342,10 @@ $is_dump_app = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
                             <textarea id="settingsBio" class="vc-input" placeholder=" " style="height: 100px; resize:none; padding-top:24px;"></textarea>
                             <label class="vc-label">О себе</label>
                         </div>
-                        <div class="flex justify-between items-center p-4 mb-4" style="background: var(--surface-elevated); border-radius: var(--radius-md);">
+                        <div class="flex justify-between items-center p-3" style="background: var(--surface-elevated); border-radius: var(--radius-md); margin-bottom: 0.75rem;">
                             <div>
-                                <div class="font-bold mb-1">Публичные сохранёнки</div>
-                                <div class="text-xs text-muted">Другие смогут видеть ваши сохранённые посты</div>
+                                <div class="font-bold" style="font-size:0.9rem;">Публичные сохранёнки</div>
+                                <div style="font-size:0.7rem; color:var(--text-muted);">Другие смогут видеть ваши сохранённые посты</div>
                             </div>
                             <label class="toggle-switch">
                                 <input type="checkbox" id="settingsBookmarksPublic" checked>
