@@ -877,6 +877,8 @@ try {
         /* ---------------- УВЕДОМЛЕНИЯ ---------------- */
         case 'get_notifications':
             requireAuth();
+            $offset = (int)($_GET['offset'] ?? 0);
+            $limit = min((int)($_GET['limit'] ?? 20), 50);
             $stmt = $pdo->prepare("
                 SELECT n.id, n.type, n.post_id, n.post_slug, n.is_read, n.created_at,
                     u.id as from_id, u.username as from_username, u.avatar_url as from_avatar_url
@@ -884,9 +886,9 @@ try {
                 LEFT JOIN users u ON n.from_user_id = u.id
                 WHERE n.user_id = ?
                 ORDER BY n.created_at DESC
-                LIMIT 50
+                LIMIT ? OFFSET ?
             ");
-            $stmt->execute([$current_session['user_id']]);
+            $stmt->execute([$current_session['user_id'], $limit, $offset]);
             $notifications = $stmt->fetchAll();
             foreach ($notifications as &$n) {
                 $n['from_username'] = htmlspecialchars($n['from_username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -907,9 +909,27 @@ try {
 
         case 'get_unread_count':
             requireAuth();
+            $last_id = (int)($_GET['last_id'] ?? 0);
             $stmt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0");
             $stmt->execute([$current_session['user_id']]);
-            echo json_encode(['success' => true, 'unread_count' => (int)$stmt->fetchColumn()]);
+            $unread_count = (int)$stmt->fetchColumn();
+            $new_notifications = [];
+            if ($last_id > 0) {
+                $stmt_new = $pdo->prepare("
+                    SELECT n.id, n.type, u.username as from_username
+                    FROM notifications n
+                    LEFT JOIN users u ON n.from_user_id = u.id
+                    WHERE n.user_id = ? AND n.id > ?
+                    ORDER BY n.id DESC
+                    LIMIT 5
+                ");
+                $stmt_new->execute([$current_session['user_id'], $last_id]);
+                $new_notifications = $stmt_new->fetchAll();
+                foreach ($new_notifications as &$nn) {
+                    $nn['from_username'] = htmlspecialchars($nn['from_username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                }
+            }
+            echo json_encode(['success' => true, 'unread_count' => $unread_count, 'new_notifications' => $new_notifications]);
             break;
 
         /* ---------------- SITEMAP / ROBOTS ---------------- */

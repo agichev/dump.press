@@ -204,7 +204,7 @@ $is_dump_app = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
         </div>
         <div class="flex gap-2">
             <button onclick="openSearch()" class="icon-btn"><i class="ph ph-magnifying-glass"></i></button>
-            <button onclick="openNotifications()" id="navNotifBtn" class="icon-btn hidden" style="position:relative;"><i class="ph ph-bell"></i><span id="notifBadge" class="notif-badge hidden">0</span></button>
+            <button onclick="navigate('/notifications')" id="navNotifBtn" class="icon-btn hidden" style="position:relative;"><i class="ph ph-bell"></i><span id="notifBadge" class="notif-badge hidden">0</span></button>
             <button onclick="navigate('/create')" id="navCreateBtn" class="icon-btn"><i class="ph ph-plus"></i></button>
             <button id="navUserBtn" class="icon-btn"><i class="ph ph-user"></i></button>
         </div>
@@ -316,15 +316,12 @@ $is_dump_app = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
         </div>
     </div>
 
-    <div id="notificationsModal" class="modal-overlay modal-bottom" onclick="closeModalOnOutsideClick(event, 'notificationsModal')">
-        <div class="modal-content" style="max-height: 85vh;">
-            <div class="flex justify-between items-center" style="padding:1.25rem 1.5rem; border-bottom:1px solid var(--surface-hover);">
-                <h3 class="font-bold" style="font-size:1.1rem;">Уведомления</h3>
-                <button type="button" onclick="closeModal('notificationsModal')" style="color:var(--text-muted);"><i class="ph ph-caret-down" style="font-size:1.4rem;"></i></button>
-            </div>
-            <div id="notificationsList" class="overflow-y-auto" style="flex:1; padding: 0.5rem 1rem 1.5rem;">
-                <div class="empty-state"><i class="ph ph-bell"></i><p>Нет уведомлений</p></div>
-            </div>
+    <div id="notificationsView" class="view-section" style="padding-top: 0;">
+        <div class="notif-page-header">
+            <h2 class="font-bold" style="font-size:1.3rem;">Уведомления</h2>
+        </div>
+        <div id="notificationsList" class="notif-scroll-area">
+            <div class="empty-state"><i class="ph ph-bell"></i><p>Нет уведомлений</p></div>
         </div>
     </div>
 
@@ -621,10 +618,6 @@ $is_dump_app = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
         </button>
         <button class="bottom-nav-item" data-nav="create" onclick="bottomNavClick('create')">
             <i class="ph ph-plus"></i>
-        </button>
-        <button class="bottom-nav-item" data-nav="notifications" onclick="bottomNavClick('notifications')" id="bottomNotifBtn" style="position:relative;">
-            <i class="ph ph-bell"></i>
-            <span id="notifBadgeBottom" class="notif-badge-bottom hidden">0</span>
         </button>
         <button class="bottom-nav-item" data-nav="profile" onclick="bottomNavClick('profile')">
             <i class="ph ph-user"></i>

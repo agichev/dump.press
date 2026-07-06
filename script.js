@@ -196,7 +196,7 @@
         const resizeTextarea = (el) => { el.style.height = 'auto'; el.style.height = (el.scrollHeight) + 'px'; };
 
         const switchView = (viewId) => {
-            ['loginView', 'registerView', 'feedView', 'profileView'].forEach(id => {
+            ['loginView', 'registerView', 'feedView', 'profileView', 'notificationsView'].forEach(id => {
                 const el = document.getElementById(id);
                 if(el) { if (id === viewId) el.classList.add('active'); else el.classList.remove('active'); }
             });
@@ -236,9 +236,6 @@
             } else if (nav === 'create') {
                 if (!currentUser) { navigate('/login'); return; }
                 navigate('/create');
-            } else if (nav === 'notifications') {
-                if (!currentUser) { navigate('/login'); return; }
-                openNotifications();
             } else if (nav === 'profile') {
                 if (!currentUser) { navigate('/login'); return; }
                 navigate('/profile');
@@ -259,6 +256,7 @@
             const isPostRoute = cleanPath.startsWith('/post/');
             const isFeed = cleanPath === '/' || isPostRoute;
             const isProfile = cleanPath.startsWith('/profile');
+            const isNotifications = cleanPath === '/notifications';
 
             if (isAuthPage || isLegal) {
                 nav.classList.remove('visible');
@@ -274,7 +272,7 @@
             if (isFeed) {
                 const el = nav.querySelector('[data-nav="feed"]');
                 if (el) el.classList.add('active');
-            } else if (isProfile) {
+            } else if (isProfile || isNotifications) {
                 const el = nav.querySelector('[data-nav="profile"]');
                 if (el) el.classList.add('active');
             }
@@ -338,7 +336,13 @@
                 openProfileData(uid);
                 window.scrollTo(0,0);
                 updateBottomNav();
-            } 
+            }
+            else if (path === '/notifications' && !isGuest) {
+                switchView('notificationsView');
+                if(feedTabs) feedTabs.classList.add('hidden');
+                loadNotifications();
+                updateBottomNav();
+            }
             else if (path === '/create' && !isGuest) {
                 if(feedTabs) feedTabs.classList.add('hidden');
                 openModal('createView', 'postContent');
@@ -455,7 +459,7 @@
                 if (legal && legal.classList.contains('open')) { closeLegal(); return; }
                 const captcha = document.getElementById('captchaModal');
                 if (captcha && captcha.classList.contains('open')) { cancelCaptcha(); return; }
-                ['postOptionsModal', 'commentsModal', 'settingsModal', 'cropModal', 'searchModal', 'passwordModal', 'confirmModal', 'textWarningModal', 'tfaSettingsModal', 'tfaLoginModal', 'followingModal', 'notificationsModal'].forEach(id => {
+                ['postOptionsModal', 'commentsModal', 'settingsModal', 'cropModal', 'searchModal', 'passwordModal', 'confirmModal', 'textWarningModal', 'tfaSettingsModal', 'tfaLoginModal', 'followingModal'].forEach(id => {
                     const m = document.getElementById(id);
                     if(m && m.classList.contains('open')) closeModal(id);
                 });
@@ -1409,7 +1413,7 @@
                 
                 let actionBtnHTML = '';
                 if (isMe) {
-                    actionBtnHTML = `<button onclick="openSettings()" class="vc-btn vc-btn-outline flex items-center justify-center gap-2" style="padding: 8px 24px; width:auto; border-radius:99px; font-size:0.9rem;"><i class="ph ph-gear"></i> Настройки</button>`;
+                    actionBtnHTML = `<div class="flex gap-2 items-center"><button onclick="openSettings()" class="vc-btn vc-btn-outline flex items-center justify-center gap-2" style="padding: 8px 24px; width:auto; border-radius:99px; font-size:0.9rem;"><i class="ph ph-gear"></i> Настройки</button><button onclick="navigate('/notifications')" class="vc-btn vc-btn-outline flex items-center justify-center" style="padding: 8px 12px; width:auto; border-radius:99px; font-size:1.1rem; position:relative;" id="profileNotifBtn"><i class="ph ph-bell"></i><span id="profileNotifBadge" class="notif-badge-profile hidden">0</span></button></div>`;
                 } else {
                     const isFollowed = p.is_followed > 0;
                     actionBtnHTML = `<button onclick="toggleFollow(${p.id}, this)" class="vc-btn ${isFollowed ? 'vc-btn-outline' : ''}" style="padding: 8px 24px; width:auto; border-radius:99px; font-size:0.9rem;">${isFollowed ? 'Вы подписаны' : 'Подписаться'}</button>`;
@@ -1515,6 +1519,12 @@
         }
         window.openFollowingModal = openFollowingModal;
 
+        let notifOffset = 0;
+        let notifLoading = false;
+        let notifHasMore = true;
+        let notifAllData = [];
+        let lastKnownNotifId = 0;
+
         function getNotifText(type, username) {
             switch(type) {
                 case 'like': return `<b>${username}</b> поставил(а) лайк на ваш пост`;
@@ -1549,7 +1559,6 @@
         }
 
         function handleNotifClick(n) {
-            closeModal('notificationsModal');
             if (n.type === 'comment') {
                 if (n.post_slug) {
                     navigate('/post/' + n.post_slug);
@@ -1574,26 +1583,63 @@
             }
         }
 
-        async function openNotifications() {
+        async function loadNotifications() {
             if (!currentUser) return;
             const list = document.getElementById('notificationsList');
+            notifOffset = 0;
+            notifHasMore = true;
+            notifAllData = [];
             list.innerHTML = '<div class="loader-screen" style="min-height: 20vh;"><i class="ph ph-circle-notch spin" style="font-size: 2.5rem; color: var(--text-muted);"></i></div>';
-            openModal('notificationsModal');
             try {
-                const res = await fetch(apiCall('get_notifications'));
+                const res = await fetch(apiCall('get_notifications') + '&offset=0&limit=20');
                 const data = await res.json();
                 if (data.success) {
-                    renderNotificationsList(data.notifications);
+                    notifAllData = data.notifications || [];
+                    notifOffset = notifAllData.length;
+                    notifHasMore = data.notifications.length >= 20;
+                    renderNotificationsList(notifAllData);
                     if (data.unread_count > 0) {
                         fetch(apiCall('mark_notifications_read'), { method: 'POST', body: 'csrf_token=' + encodeURIComponent(csrfToken), headers: {'Content-Type': 'application/x-www-form-urlencoded'} });
                         updateNotifBadge(0);
                     }
+                    if (notifAllData.length > 0) lastKnownNotifId = notifAllData[0].id;
+                    setupNotifScrollListener();
                 }
             } catch(e) {
                 list.innerHTML = '<div class="empty-state"><i class="ph ph-warning"></i><p>Ошибка загрузки</p></div>';
             }
         }
-        window.openNotifications = openNotifications;
+
+        async function loadMoreNotifications() {
+            if (!currentUser || notifLoading || !notifHasMore) return;
+            notifLoading = true;
+            const loader = document.getElementById('notifLoadMore');
+            if (loader) loader.classList.remove('hidden');
+            try {
+                const res = await fetch(apiCall('get_notifications') + `&offset=${notifOffset}&limit=20`);
+                const data = await res.json();
+                if (data.success && data.notifications.length > 0) {
+                    notifAllData = notifAllData.concat(data.notifications);
+                    notifOffset += data.notifications.length;
+                    notifHasMore = data.notifications.length >= 20;
+                    appendNotifications(data.notifications);
+                } else {
+                    notifHasMore = false;
+                }
+            } catch(e) {}
+            notifLoading = false;
+            if (loader) loader.classList.add('hidden');
+        }
+
+        function setupNotifScrollListener() {
+            const list = document.getElementById('notificationsList');
+            if (!list) return;
+            list.onscroll = () => {
+                if (list.scrollTop + list.clientHeight >= list.scrollHeight - 100) {
+                    loadMoreNotifications();
+                }
+            };
+        }
 
         function renderNotificationsList(notifications) {
             const list = document.getElementById('notificationsList');
@@ -1602,24 +1648,54 @@
                 return;
             }
             window._notifData = {};
-            list.innerHTML = notifications.map((n, i) => {
+            let html = notifications.map((n, i) => {
                 window._notifData[i] = n;
-                const avatar = n.from_avatar_url ? getProxyUrl(n.from_avatar_url) : (n.from_username ? getProxyUrl('https://ui-avatars.com/api/?name=' + n.from_username + '&background=random') : '');
-                const iconClass = getNotifIcon(n.type);
-                const iconColor = getNotifIconColor(n.type);
-                const text = getNotifText(n.type, n.from_username || 'Кто-то');
-                const unreadClass = n.is_read == 0 ? 'notif-unread' : '';
-                const avatarHtml = avatar ? `<img src="${avatar}" class="notif-avatar" loading="lazy">` : `<div class="notif-avatar-placeholder"><i class="${iconClass}" style="color:${iconColor};font-size:1.2rem;"></i></div>`;
-                return `<div class="notif-item smooth-fade-in ${unreadClass}" data-notif-idx="${i}">
-                    ${avatarHtml}
-                    <div class="notif-body">
-                        <div class="notif-text">${text}</div>
-                        <div class="notif-time">${timeAgo(n.created_at)}</div>
-                    </div>
-                    <div class="notif-icon-indicator" style="color:${iconColor};"><i class="${iconClass}"></i></div>
-                </div>`;
+                return renderNotifItem(n, i);
             }).join('');
+            html += '<div id="notifLoadMore" class="hidden" style="text-align:center;padding:1rem;"><i class="ph ph-circle-notch spin" style="font-size:1.5rem;color:var(--text-muted);"></i></div>';
+            list.innerHTML = html;
+            attachNotifListeners(list);
+        }
+
+        function appendNotifications(notifications) {
+            const list = document.getElementById('notificationsList');
+            const loader = document.getElementById('notifLoadMore');
+            const startIdx = notifAllData.length - notifications.length;
+            notifications.forEach((n, i) => {
+                window._notifData[startIdx + i] = n;
+                const div = document.createElement('div');
+                div.innerHTML = renderNotifItem(n, startIdx + i);
+                const item = div.firstElementChild;
+                if (loader) list.insertBefore(item, loader);
+                else list.appendChild(item);
+                attachNotifSwipe(item);
+                item.addEventListener('click', () => {
+                    const idx = parseInt(item.dataset.notifIdx);
+                    if (window._notifData[idx]) handleNotifClick(window._notifData[idx]);
+                });
+            });
+        }
+
+        function renderNotifItem(n, idx) {
+            const avatar = n.from_avatar_url ? getProxyUrl(n.from_avatar_url) : (n.from_username ? getProxyUrl('https://ui-avatars.com/api/?name=' + n.from_username + '&background=random') : '');
+            const iconClass = getNotifIcon(n.type);
+            const iconColor = getNotifIconColor(n.type);
+            const text = getNotifText(n.type, n.from_username || 'Кто-то');
+            const unreadClass = n.is_read == 0 ? 'notif-unread' : '';
+            const avatarHtml = avatar ? `<img src="${avatar}" class="notif-avatar" loading="lazy">` : `<div class="notif-avatar-placeholder"><i class="${iconClass}" style="color:${iconColor};font-size:1.2rem;"></i></div>`;
+            return `<div class="notif-item smooth-fade-in ${unreadClass}" data-notif-idx="${idx}" data-notif-id="${n.id}">
+                ${avatarHtml}
+                <div class="notif-body">
+                    <div class="notif-text">${text}</div>
+                    <div class="notif-time">${timeAgo(n.created_at)}</div>
+                </div>
+                <div class="notif-icon-indicator" style="color:${iconColor};"><i class="${iconClass}"></i></div>
+            </div>`;
+        }
+
+        function attachNotifListeners(list) {
             list.querySelectorAll('.notif-item').forEach(el => {
+                attachNotifSwipe(el);
                 el.addEventListener('click', () => {
                     const idx = parseInt(el.dataset.notifIdx);
                     if (window._notifData[idx]) handleNotifClick(window._notifData[idx]);
@@ -1627,31 +1703,77 @@
             });
         }
 
+        function attachNotifSwipe(el) {
+            let startY = 0, currentY = 0, isSwiping = false;
+            const onStart = (e) => {
+                startY = e.touches ? e.touches[0].clientY : e.clientY;
+                isSwiping = false;
+                el.style.transition = 'none';
+            };
+            const onMove = (e) => {
+                currentY = e.touches ? e.touches[0].clientY : e.clientY;
+                const diff = currentY - startY;
+                if (Math.abs(diff) > 10) isSwiping = true;
+                if (diff < 0) {
+                    el.style.transform = `translateY(${diff}px)`;
+                    el.style.opacity = Math.max(0, 1 + diff / 150);
+                }
+            };
+            const onEnd = () => {
+                const diff = currentY - startY;
+                el.style.transition = 'transform 0.3s, opacity 0.3s';
+                if (diff < -80) {
+                    el.style.transform = 'translateY(-100%)';
+                    el.style.opacity = '0';
+                    setTimeout(() => el.remove(), 300);
+                } else {
+                    el.style.transform = '';
+                    el.style.opacity = '';
+                }
+                isSwiping = false;
+            };
+            el.addEventListener('touchstart', onStart, {passive: true});
+            el.addEventListener('touchmove', onMove, {passive: true});
+            el.addEventListener('touchend', onEnd);
+        }
+
         function updateNotifBadge(count) {
             const badge = document.getElementById('notifBadge');
-            const badgeBottom = document.getElementById('notifBadgeBottom');
+            const profileBadge = document.getElementById('profileNotifBadge');
+            const profileIcon = document.querySelector('[data-nav="profile"] i');
             if (count > 0) {
                 if (badge) { badge.textContent = count > 99 ? '99+' : count; badge.classList.remove('hidden'); }
-                if (badgeBottom) { badgeBottom.textContent = count > 99 ? '99+' : count; badgeBottom.classList.remove('hidden'); }
+                if (profileBadge) { profileBadge.textContent = count > 99 ? '99+' : count; profileBadge.classList.remove('hidden'); }
+                if (profileIcon) profileIcon.classList.add('notif-pulse');
             } else {
                 if (badge) badge.classList.add('hidden');
-                if (badgeBottom) badgeBottom.classList.add('hidden');
+                if (profileBadge) profileBadge.classList.add('hidden');
+                if (profileIcon) profileIcon.classList.remove('notif-pulse');
             }
         }
 
         async function pollUnreadCount() {
             if (!currentUser) return;
             try {
-                const res = await fetch(apiCall('get_unread_count'));
+                const res = await fetch(apiCall('get_unread_count') + '&last_id=' + lastKnownNotifId);
                 const data = await res.json();
-                if (data.success) updateNotifBadge(data.unread_count);
+                if (data.success) {
+                    updateNotifBadge(data.unread_count);
+                    if (data.new_notifications && data.new_notifications.length > 0) {
+                        data.new_notifications.forEach(n => {
+                            const text = getNotifText(n.type, n.from_username || 'Кто-то').replace(/<[^>]*>/g, '');
+                            showToast(text);
+                        });
+                        lastKnownNotifId = data.new_notifications[0].id;
+                    }
+                }
             } catch(e) {}
         }
 
         function startNotifPolling() {
             stopNotifPolling();
             pollUnreadCount();
-            notifPollInterval = setInterval(pollUnreadCount, 30000);
+            notifPollInterval = setInterval(pollUnreadCount, 5000);
         }
 
         function stopNotifPolling() {
