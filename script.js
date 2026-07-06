@@ -997,8 +997,8 @@
                 const url = URL.createObjectURL(file);
                 img.onload = () => {
                     URL.revokeObjectURL(url);
-                    const MAX_DIM = 1200;
-                    const TARGET_SIZE = 10 * 1024;
+                    const MAX_DIM = 1920;
+                    const TARGET_SIZE = 150 * 1024;
                     let w = img.width, h = img.height;
                     if (w > MAX_DIM || h > MAX_DIM) {
                         if (w > h) { h = Math.round(h * MAX_DIM / w); w = MAX_DIM; }
@@ -1026,7 +1026,7 @@
                             }
                         }, 'image/jpeg', mid);
                     }
-                    tryQuality(0.05, 0.95, new Blob());
+                    tryQuality(0.5, 0.95, new Blob());
                 };
                 img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
                 img.src = url;
