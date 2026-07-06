@@ -1081,7 +1081,7 @@
         function initCrop(e) {
             const file = e.target.files[0];
             if (!file) return;
-            if (file.size > MAX_FILE_SIZE) { showToast('Файл слишком большой (макс 5 МБ)'); return; }
+            if (file.size > MAX_FILE_SIZE) { showToast('Файл слишком большой (макс 20 МБ)'); return; }
             
             const reader = new FileReader();
             reader.onload = (event) => {
@@ -1511,7 +1511,7 @@
             const signatures = new Set();
 
             for(let f of files) {
-                if (f.size > MAX_FILE_SIZE) { showToast(`Файл ${f.name} слишком большой`); continue; }
+                if (f.size > MAX_FILE_SIZE) { showToast(`Файл ${f.name} слишком большой (макс 20 МБ)`); continue; }
                 if (!f.type.startsWith('image/')) { showToast(`Файл ${f.name} не картинка`); continue; }
                 
                 const sig = f.name + f.size;
@@ -2104,7 +2104,7 @@
         function handleCommentImage(e) {
             const file = e.target.files[0];
             if(!file) return;
-            if (file.size > MAX_FILE_SIZE) { showToast('Файл слишком большой. Максимум 5 МБ.'); e.target.value = ''; return; }
+            if (file.size > MAX_FILE_SIZE) { showToast('Файл слишком большой. Максимум 20 МБ.'); e.target.value = ''; return; }
             pendingCommentImageFile = file;
             document.getElementById('commentImagePreview').src = URL.createObjectURL(file);
             document.getElementById('commentImagePreviewContainer').classList.remove('hidden');

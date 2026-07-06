@@ -125,7 +125,7 @@ $is_dump_app = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
     <script>
         const BASE_PATH = '<?php echo rtrim(dirname($_SERVER["SCRIPT_NAME"]), "\\/"); ?>';
         const apiCall = (action) => BASE_PATH + '/index.php?api=' + action;
-        const MAX_FILE_SIZE = 5 * 1024 * 1024;
+        const MAX_FILE_SIZE = 20 * 1024 * 1024;
 
         const TURNSTILE_ENABLED = <?php echo $turnstile_enabled ? 'true' : 'false'; ?>;
         window.TurnstileSiteKey = '<?php echo htmlspecialchars($turnstile_site_key, ENT_QUOTES | ENT_HTML5, 'UTF-8'); ?>';

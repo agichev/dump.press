@@ -577,7 +577,7 @@ try {
                 throw new Exception('Ошибка загрузки файла.');
             }
             $file = $_FILES['image'];
-            if ($file['size'] > 5 * 1024 * 1024) throw new Exception('Файл слишком большой (макс 5 МБ).');
+            if ($file['size'] > 20 * 1024 * 1024) throw new Exception('Файл слишком большой (макс 20 МБ).');
 
             $mime = mime_content_type($file['tmp_name']);
             if (strpos($mime, 'image/') !== 0) throw new Exception('Недопустимый формат файла.');
