@@ -457,7 +457,8 @@
             .settings-tab { padding: 8px 12px; font-size: 0.85rem; }
 
             /* Скрываем дублирующие кнопки в топ-баре на мобилках */
-            #mainNav .icon-btn:not(#navBackBtn) { display: none; }
+            #mainNav .icon-btn:not(#navBackBtn):not(#navNotifBtn) { display: none; }
+            #navNotifBtn:not(.hidden) { display: flex; }
             .bottom-nav { display: flex; }
             .bottom-nav.visible { display: flex; }
         }
@@ -543,6 +544,8 @@
         .notifications-container {
             display: flex; flex-direction: column;
             overflow: hidden;
+            max-width: 600px;
+            left: 50%; transform: translateX(-50%);
         }
         .notif-page-header {
             padding: 5rem 1.5rem 1rem;
