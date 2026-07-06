@@ -175,7 +175,7 @@ try {
 
         case 'me':
             if ($current_session) {
-                $stmt = $pdo->prepare("SELECT id, username, email, avatar_url, bio, created_at, tfa_enabled FROM users WHERE id = ?");
+                $stmt = $pdo->prepare("SELECT id, username, email, avatar_url, bio, created_at, tfa_enabled, bookmarks_public FROM users WHERE id = ?");
                 $stmt->execute([$current_session['user_id']]);
                 $user = $stmt->fetch();
                 $user['username'] = htmlspecialchars($user['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -324,7 +324,7 @@ try {
             $current_user_id = $current_session ? (int)$current_session['user_id'] : 0;
 
             $stmt = $pdo->prepare("
-                SELECT id, username, avatar_url, bio, created_at,
+                SELECT id, username, avatar_url, bio, created_at, bookmarks_public,
                     (SELECT COUNT(*) FROM posts WHERE user_id = u.id) as posts_count,
                     (SELECT COUNT(*) FROM follows WHERE following_id = u.id) as followers_count,
                     (SELECT COUNT(*) FROM follows WHERE follower_id = u.id) as following_count,
@@ -352,19 +352,20 @@ try {
             $posts = $stmt_posts->fetchAll();
 
             $bookmarks = [];
-            if ($current_user_id === $user_id) {
+            $show_bookmarks = ($current_user_id === $user_id) || ($profile['bookmarks_public'] ?? 0) == 1;
+            if ($show_bookmarks) {
                 $stmt_bookmarks = $pdo->prepare("
                     SELECT p.*, u.username, u.avatar_url,
                         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes_count,
                         (SELECT COUNT(*) FROM likes WHERE post_id = p.id AND user_id = ?) as is_liked,
-                        1 as is_bookmarked,
+                        (SELECT COUNT(*) FROM bookmarks WHERE post_id = p.id AND user_id = ?) as is_bookmarked,
                         (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments_count
                     FROM posts p
                     JOIN bookmarks b ON p.id = b.post_id
                     JOIN users u ON p.user_id = u.id
                     WHERE b.user_id = ? ORDER BY b.created_at DESC LIMIT 50
                 ");
-                $stmt_bookmarks->execute([$current_user_id, $user_id]);
+                $stmt_bookmarks->execute([$current_user_id, $current_user_id, $user_id]);
                 $bookmarks = $stmt_bookmarks->fetchAll();
             }
 
@@ -743,14 +744,15 @@ try {
             requireAuth();
             $bio = trim($_POST['bio'] ?? '');
             $avatar_url = trim($_POST['avatar_url'] ?? '');
+            $bookmarks_public = isset($_POST['bookmarks_public']) && $_POST['bookmarks_public'] === '1' ? 1 : 0;
             if ($avatar_url && (!filter_var($avatar_url, FILTER_VALIDATE_URL) || !preg_match('/^https?:\/\//i', $avatar_url))) { $avatar_url = ''; }
 
             if ($avatar_url) {
-                $stmt = $pdo->prepare("UPDATE users SET bio = ?, avatar_url = ? WHERE id = ?");
-                $stmt->execute([$bio, $avatar_url, $current_session['user_id']]);
+                $stmt = $pdo->prepare("UPDATE users SET bio = ?, avatar_url = ?, bookmarks_public = ? WHERE id = ?");
+                $stmt->execute([$bio, $avatar_url, $bookmarks_public, $current_session['user_id']]);
             } else {
-                $stmt = $pdo->prepare("UPDATE users SET bio = ? WHERE id = ?");
-                $stmt->execute([$bio, $current_session['user_id']]);
+                $stmt = $pdo->prepare("UPDATE users SET bio = ?, bookmarks_public = ? WHERE id = ?");
+                $stmt->execute([$bio, $bookmarks_public, $current_session['user_id']]);
             }
             echo json_encode(['success' => true]);
             break;

@@ -1051,6 +1051,7 @@
         function openSettings() {
             document.getElementById('settingsAvatarPreview').src = getProxyUrl(currentUser.avatar_url || `https://ui-avatars.com/api/?name=${currentUser.username}&background=random`);
             document.getElementById('settingsBio').value = currentUser.bio || '';
+            document.getElementById('settingsBookmarksPublic').checked = currentUser.bookmarks_public != 0;
             document.getElementById('accUsername').value = currentUser.username || '';
             document.getElementById('accEmail').value = currentUser.email || '';
             switchSettingsTab('profile');
@@ -1135,6 +1136,7 @@
                 const fd = new FormData();
                 fd.append('bio', document.getElementById('settingsBio').value);
                 fd.append('avatar_url', avatarUrl);
+                fd.append('bookmarks_public', document.getElementById('settingsBookmarksPublic').checked ? '1' : '0');
                 fd.append('csrf_token', csrfToken);
 
                 const res = await fetch(apiCall('update_profile'), { method: 'POST', body: fd });
@@ -1425,7 +1427,7 @@
                 let tabsHtml = '';
                 let gridsHtml = `<div id="profileGridPosts" class="profile-grid">${createGridHtml(data.posts, 'Нет публикаций', 'ph-images', 'posts')}</div>`;
 
-                if (isMe) {
+                if (isMe || data.profile.bookmarks_public == 1) {
                     tabsHtml = `
                     <div class="profile-tabs-wrapper smooth-fade-in">
                         <div class="profile-tabs">

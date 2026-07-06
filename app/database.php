@@ -116,6 +116,7 @@ try {
     try { $pdo->exec("ALTER TABLE users ADD COLUMN tfa_enabled TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE users ADD COLUMN tfa_method VARCHAR(20) DEFAULT ''"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE users ADD COLUMN tfa_secret VARCHAR(255) DEFAULT ''"); } catch (PDOException $e) {}
+    try { $pdo->exec("ALTER TABLE users ADD COLUMN bookmarks_public TINYINT(1) DEFAULT 1"); } catch (PDOException $e) {}
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS temp_auth (
