@@ -505,9 +505,17 @@
             display: flex; align-items: center; gap: 12px;
             padding: 14px 12px; border-radius: var(--radius-md);
             cursor: pointer; transition: background 0.2s;
+            position: relative; overflow: hidden;
         }
         .notif-item:hover { background: var(--surface-elevated); }
         .notif-item:active { background: var(--surface-active); }
+        .notif-item::before {
+            content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+            width: 0; background: rgba(52, 211, 153, 0.3);
+            transition: width 0.1s; z-index: 0;
+        }
+        .notif-item.swiping-right::before { width: 100%; }
+        .notif-item > * { position: relative; z-index: 1; }
         .notif-unread { background: rgba(255,255,255,0.03); }
         .notif-unread::before {
             content: ''; position: absolute; left: 0; top: 50%;

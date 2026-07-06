@@ -905,7 +905,12 @@ try {
 
         case 'mark_notifications_read':
             requireAuth();
-            $pdo->prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ?")->execute([$current_session['user_id']]);
+            $id = (int)($_POST['id'] ?? 0);
+            if ($id > 0) {
+                $pdo->prepare("UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?")->execute([$id, $current_session['user_id']]);
+            } else {
+                $pdo->prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ?")->execute([$current_session['user_id']]);
+            }
             echo json_encode(['success' => true]);
             break;
 

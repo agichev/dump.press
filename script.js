@@ -86,6 +86,26 @@
             const toast = document.createElement('div');
             toast.className = 'toast'; toast.textContent = msg;
             container.appendChild(toast);
+            let startY = 0, currentY = 0;
+            toast.addEventListener('touchstart', (e) => { startY = e.touches[0].clientY; }, {passive: true});
+            toast.addEventListener('touchmove', (e) => {
+                currentY = e.touches[0].clientY;
+                const diff = currentY - startY;
+                if (diff < 0) {
+                    toast.style.transform = `translateY(${diff}px)`;
+                    toast.style.opacity = Math.max(0, 1 + diff / 100);
+                }
+            }, {passive: true});
+            toast.addEventListener('touchend', () => {
+                const diff = currentY - startY;
+                if (diff < -30) {
+                    toast.classList.add('fade-out');
+                    setTimeout(() => { if(toast.parentNode) toast.remove(); }, 300);
+                } else {
+                    toast.style.transform = '';
+                    toast.style.opacity = '';
+                }
+            });
             setTimeout(() => {
                 toast.classList.add('fade-out');
                 setTimeout(() => { if(toast.parentNode) toast.remove(); }, 300);
@@ -1708,27 +1728,34 @@
         }
 
         function attachNotifSwipe(el) {
-            let startY = 0, currentY = 0, isSwiping = false;
+            let startX = 0, currentX = 0, isSwiping = false;
             const onStart = (e) => {
-                startY = e.touches ? e.touches[0].clientY : e.clientY;
+                startX = e.touches ? e.touches[0].clientX : e.clientX;
                 isSwiping = false;
                 el.style.transition = 'none';
+                el.classList.remove('swiping-right');
             };
             const onMove = (e) => {
-                currentY = e.touches ? e.touches[0].clientY : e.clientY;
-                const diff = currentY - startY;
+                currentX = e.touches ? e.touches[0].clientX : e.clientX;
+                const diff = currentX - startX;
                 if (Math.abs(diff) > 10) isSwiping = true;
-                if (diff < 0) {
-                    el.style.transform = `translateY(${diff}px)`;
-                    el.style.opacity = Math.max(0, 1 + diff / 150);
+                if (diff > 0) {
+                    el.style.transform = `translateX(${diff}px)`;
+                    el.style.opacity = Math.max(0, 1 - diff / 200);
+                    if (diff > 30) el.classList.add('swiping-right');
                 }
             };
             const onEnd = () => {
-                const diff = currentY - startY;
+                const diff = currentX - startX;
                 el.style.transition = 'transform 0.3s, opacity 0.3s';
-                if (diff < -80) {
-                    el.style.transform = 'translateY(-100%)';
+                el.classList.remove('swiping-right');
+                if (diff > 80) {
+                    el.style.transform = 'translateX(100%)';
                     el.style.opacity = '0';
+                    const notifId = el.dataset.notifId;
+                    if (notifId) {
+                        fetch(apiCall('mark_notification_read'), { method: 'POST', body: 'csrf_token=' + encodeURIComponent(csrfToken) + '&id=' + notifId, headers: {'Content-Type': 'application/x-www-form-urlencoded'} });
+                    }
                     setTimeout(() => el.remove(), 300);
                 } else {
                     el.style.transform = '';
