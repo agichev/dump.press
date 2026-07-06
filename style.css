@@ -218,7 +218,7 @@
         .profile-tabs-wrapper { padding: 0 0.5rem; margin-bottom: 1rem; margin-top: 1rem; }
         .profile-tabs { position: relative; display: flex; background: var(--surface-elevated); border-radius: 12px; padding: 3px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2); }
         .profile-tab-indicator { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc(50% - 3px); background: var(--surface-active); border-radius: 9px; transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1); z-index: 0; }
-        .profile-tab { flex: 1; padding: 8px 0; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); position: relative; z-index: 1; display: flex; justify-content: center; align-items: center; gap: 5px; transition: color 0.3s; }
+        .profile-tab { flex: 1; padding: 10px 0; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); position: relative; z-index: 1; display: flex; justify-content: center; align-items: center; gap: 5px; transition: color 0.3s; }
         .profile-tab.active { color: var(--text-main); }
 
         .profile-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; }
