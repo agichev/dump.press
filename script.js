@@ -1448,7 +1448,7 @@
                             <div class="profile-stats">
                                 <div class="stat-item"><div class="stat-val">${p.posts_count}</div><div class="stat-lbl">Посты</div></div>
                                 <div class="stat-item"><div class="stat-val" id="statFollowers">${p.followers_count}</div><div class="stat-lbl">Подписчики</div></div>
-                                <div class="stat-item" style="cursor:pointer;" onclick="openFollowingModal(${p.id})"><div class="stat-val">${p.following_count}</div><div class="stat-lbl">Подписки</div></div>
+                                <div class="stat-item" ${isMe ? `style="cursor:pointer;" onclick="openFollowingModal(${p.id})"` : ''}><div class="stat-val">${p.following_count}</div><div class="stat-lbl">Подписки</div></div>
                             </div>
                         </div>
                     </div>

@@ -404,7 +404,6 @@ try {
 
         case 'get_following':
             requireAuth();
-            $user_id = (int)($_GET['id'] ?? $current_session['user_id']);
             $stmt = $pdo->prepare("
                 SELECT u.id, u.username, u.avatar_url
                 FROM follows f
@@ -412,7 +411,7 @@ try {
                 WHERE f.follower_id = ?
                 ORDER BY u.username ASC
             ");
-            $stmt->execute([$user_id]);
+            $stmt->execute([$current_session['user_id']]);
             $following = $stmt->fetchAll();
             foreach ($following as &$u) {
                 $u['username'] = htmlspecialchars($u['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
