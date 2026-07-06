@@ -402,6 +402,25 @@ try {
             }
             break;
 
+        case 'get_following':
+            requireAuth();
+            $user_id = (int)($_GET['id'] ?? $current_session['user_id']);
+            $stmt = $pdo->prepare("
+                SELECT u.id, u.username, u.avatar_url
+                FROM follows f
+                JOIN users u ON f.following_id = u.id
+                WHERE f.follower_id = ?
+                ORDER BY u.username ASC
+            ");
+            $stmt->execute([$user_id]);
+            $following = $stmt->fetchAll();
+            foreach ($following as &$u) {
+                $u['username'] = htmlspecialchars($u['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                $u['avatar_url'] = htmlspecialchars($u['avatar_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            }
+            echo json_encode(['success' => true, 'following' => $following]);
+            break;
+
         case 'mark_seen':
             requireAuth();
             $post_id = (int)($_POST['post_id'] ?? 0);

@@ -447,7 +447,7 @@
                 if (legal && legal.classList.contains('open')) { closeLegal(); return; }
                 const captcha = document.getElementById('captchaModal');
                 if (captcha && captcha.classList.contains('open')) { cancelCaptcha(); return; }
-                ['postOptionsModal', 'commentsModal', 'settingsModal', 'cropModal', 'searchModal', 'passwordModal', 'confirmModal', 'textWarningModal', 'tfaSettingsModal', 'tfaLoginModal'].forEach(id => {
+                ['postOptionsModal', 'commentsModal', 'settingsModal', 'cropModal', 'searchModal', 'passwordModal', 'confirmModal', 'textWarningModal', 'tfaSettingsModal', 'tfaLoginModal', 'followingModal'].forEach(id => {
                     const m = document.getElementById(id);
                     if(m && m.classList.contains('open')) closeModal(id);
                 });
@@ -1402,7 +1402,7 @@
                             <div class="profile-stats">
                                 <div class="stat-item"><div class="stat-val">${p.posts_count}</div><div class="stat-lbl">Посты</div></div>
                                 <div class="stat-item"><div class="stat-val" id="statFollowers">${p.followers_count}</div><div class="stat-lbl">Подписчики</div></div>
-                                <div class="stat-item"><div class="stat-val">${p.following_count}</div><div class="stat-lbl">Подписки</div></div>
+                                <div class="stat-item" style="cursor:pointer;" onclick="openFollowingModal(${p.id})"><div class="stat-val">${p.following_count}</div><div class="stat-lbl">Подписки</div></div>
                             </div>
                         </div>
                     </div>
@@ -1430,6 +1430,33 @@
             }
             isProcessing = false;
         }
+
+        async function openFollowingModal(userId) {
+            if (!userId) userId = currentUser.id;
+            const list = document.getElementById('followingList');
+            list.innerHTML = '<div class="loader-screen" style="min-height: 20vh;"><i class="ph ph-circle-notch spin" style="font-size: 2.5rem; color: var(--text-muted);"></i></div>';
+            openModal('followingModal');
+            try {
+                const res = await fetch(apiCall('get_following') + `&id=${userId}`);
+                const data = await res.json();
+                if (data.success && data.following.length > 0) {
+                    list.innerHTML = data.following.map(u => {
+                        const avatar = u.avatar_url || `https://ui-avatars.com/api/?name=${u.username}&background=random`;
+                        return `<div class="search-result-item smooth-fade-in" onclick="navigate('/profile/${u.id}'); closeModal('followingModal');">
+                            <img src="${avatar}" class="search-result-img">
+                            <div class="font-bold flex-1">${u.username}</div>
+                        </div>`;
+                    }).join('');
+                } else if (data.success) {
+                    list.innerHTML = '<div class="empty-state"><i class="ph ph-user-circle"></i><p>Нет подписок</p></div>';
+                } else {
+                    list.innerHTML = '<div class="text-center py-4 text-muted">Ошибка загрузки</div>';
+                }
+            } catch(e) {
+                list.innerHTML = '<div class="text-center py-4 text-muted">Ошибка загрузки</div>';
+            }
+        }
+        window.openFollowingModal = openFollowingModal;
 
         function processPostImageFiles(files) {
             if (!files.length) return;

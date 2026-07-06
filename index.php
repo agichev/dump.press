@@ -303,6 +303,18 @@ $is_dump_app = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
         </div>
     </div>
 
+    <div id="followingModal" class="modal-overlay modal-bottom" onclick="closeModalOnOutsideClick(event, 'followingModal')">
+        <div class="modal-content" style="max-height: 85vh;">
+            <div class="flex justify-between items-center" style="padding:1.25rem 1.5rem; border-bottom:1px solid var(--surface-hover);">
+                <h3 class="font-bold" style="font-size:1.1rem;">Подписки</h3>
+                <button type="button" onclick="closeModal('followingModal')" style="color:var(--text-muted);"><i class="ph ph-caret-down" style="font-size:1.4rem;"></i></button>
+            </div>
+            <div id="followingList" class="overflow-y-auto" style="flex:1; padding: 0.5rem 1rem 1.5rem;">
+                <div class="loader-screen" style="min-height: 20vh;"><i class="ph ph-circle-notch spin" style="font-size: 2.5rem; color: var(--text-muted);"></i></div>
+            </div>
+        </div>
+    </div>
+
     <div id="settingsModal" class="modal-overlay" onclick="closeModalOnOutsideClick(event, 'settingsModal')">
         <div class="modal-content" style="max-width: 500px; max-height: 90vh; overflow-y: auto; display: flex; flex-direction: column;">
             <div class="flex justify-between items-center mb-4">
