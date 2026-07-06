@@ -316,7 +316,7 @@ $is_dump_app = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
         </div>
     </div>
 
-    <div id="notificationsView" class="view-section" style="padding-top: 0;">
+    <div id="notificationsView" class="view-section notifications-container">
         <div class="notif-page-header">
             <h2 class="font-bold" style="font-size:1.3rem;">Уведомления</h2>
         </div>

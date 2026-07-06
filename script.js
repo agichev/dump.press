@@ -337,7 +337,7 @@
                 window.scrollTo(0,0);
                 updateBottomNav();
             }
-            else if (path === '/notifications' && !isGuest) {
+            else if ((path === '/notifications' || path === '/notifications/') && !isGuest) {
                 switchView('notificationsView');
                 if(feedTabs) feedTabs.classList.add('hidden');
                 loadNotifications();
