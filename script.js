@@ -1325,19 +1325,15 @@
         window.switchProfileTab = (tab) => {
             const isPosts = tab === 'posts';
             document.getElementById('tabBtnPosts').classList.toggle('active', isPosts);
-            const bookmarksBtn = document.getElementById('tabBtnBookmarks');
-            if (bookmarksBtn) bookmarksBtn.classList.toggle('active', !isPosts);
+            document.getElementById('tabBtnBookmarks').classList.toggle('active', !isPosts);
             
             const indicator = document.getElementById('profileTabIndicator');
             if (indicator) {
-                if (bookmarksBtn) {
-                    indicator.style.transform = isPosts ? 'translateX(0)' : `translateX(${document.getElementById('tabBtnPosts').offsetWidth}px)`;
-                }
+                indicator.style.transform = isPosts ? 'translateX(0)' : `translateX(${document.getElementById('tabBtnPosts').offsetWidth}px)`;
             }
 
             document.getElementById('profileGridPosts').classList.toggle('hidden', !isPosts);
-            const bookmarksGrid = document.getElementById('profileGridBookmarks');
-            if (bookmarksGrid) bookmarksGrid.classList.toggle('hidden', isPosts);
+            document.getElementById('profileGridBookmarks').classList.toggle('hidden', isPosts);
         };
 
         window.openLocalFeed = function(source, startIndex) {
@@ -1431,16 +1427,15 @@
                 let tabsHtml = '';
                 let gridsHtml = `<div id="profileGridPosts" class="profile-grid">${createGridHtml(data.posts, 'Нет публикаций', 'ph-images', 'posts')}</div>`;
 
-                const showBookmarksTab = isMe || data.profile.bookmarks_public == 1;
-                tabsHtml = `
+                if (isMe || data.profile.bookmarks_public == 1) {
+                    tabsHtml = `
                     <div class="profile-tabs-wrapper smooth-fade-in">
                         <div class="profile-tabs">
-                            <div id="profileTabIndicator" class="profile-tab-indicator" style="width: ${showBookmarksTab ? 'calc(50% - 4px)' : 'calc(100% - 4px)'};"></div>
+                            <div id="profileTabIndicator" class="profile-tab-indicator"></div>
                             <button id="tabBtnPosts" class="profile-tab active" onclick="switchProfileTab('posts')"><i class="ph ph-grid-four"></i> Публикации</button>
-                            ${showBookmarksTab ? `<button id="tabBtnBookmarks" class="profile-tab" onclick="switchProfileTab('bookmarks')"><i class="ph ph-bookmark-simple"></i> Сохранённые</button>` : ''}
+                            <button id="tabBtnBookmarks" class="profile-tab" onclick="switchProfileTab('bookmarks')"><i class="ph ph-bookmark-simple"></i> Сохранённые</button>
                         </div>
                     </div>`;
-                if (showBookmarksTab) {
                     gridsHtml += `<div id="profileGridBookmarks" class="profile-grid hidden">${createGridHtml(data.bookmarks, 'Нет сохранённых постов', 'ph-bookmark', 'bookmarks')}</div>`;
                 }
 

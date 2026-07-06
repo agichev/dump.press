@@ -316,8 +316,8 @@ $is_dump_app = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
     </div>
 
     <div id="settingsModal" class="modal-overlay" onclick="closeModalOnOutsideClick(event, 'settingsModal')">
-        <div class="modal-content" style="max-width: 500px; max-height: 90vh; overflow-y: auto; display: flex; flex-direction: column;">
-            <div class="flex justify-between items-center mb-4">
+        <div class="modal-content" style="max-width: 500px; max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="flex justify-between items-center mb-4" style="flex-shrink: 0;">
                 <h2 class="font-bold" style="font-size:1.5rem;">Настройки</h2>
                 <button type="button" onclick="closeModal('settingsModal')" style="color:var(--text-muted);"><i class="ph ph-x" style="font-size:1.4rem;"></i></button>
             </div>
@@ -328,70 +328,72 @@ $is_dump_app = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
                 <button class="settings-tab" id="tabBtnSessions" onclick="switchSettingsTab('sessions')">Сессии</button>
             </div>
 
-            <div id="paneProfile" class="block smooth-fade-in">
-                <form onsubmit="saveProfile(event)" novalidate>
-                    <div class="flex justify-center mb-6">
-                        <div style="position:relative; width:100px; height:100px; cursor:pointer;" onclick="document.getElementById('settingsAvatarFile').click()">
-                            <img id="settingsAvatarPreview" src="" class="w-full h-full rounded-full object-cover" style="background:var(--surface-elevated);">
-                            <div class="absolute inset-0 flex items-center justify-center rounded-full" style="background:rgba(0,0,0,0.5); top:0; left:0; width:100%; height:100%; position:absolute;"><i class="ph ph-camera text-white" style="font-size:1.5rem;"></i></div>
-                        </div>
-                        <input type="file" id="settingsAvatarFile" class="hidden" accept="image/png, image/jpeg, image/webp" onchange="initCrop(event)">
-                    </div>
-                    <div class="input-group">
-                        <textarea id="settingsBio" class="vc-input" placeholder=" " style="height: 100px; resize:none; padding-top:24px;"></textarea>
-                        <label class="vc-label">О себе</label>
-                    </div>
-                    <div class="flex justify-between items-center p-4 mb-4" style="background: var(--surface-elevated); border-radius: var(--radius-md);">
-                        <div>
-                            <div class="font-bold mb-1">Публичные сохранёнки</div>
-                            <div class="text-xs text-muted">Другие смогут видеть ваши сохранённые посты</div>
-                        </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="settingsBookmarksPublic" checked>
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-                    <button type="submit" class="vc-btn mb-4">Обновить профиль</button>
-                </form>
-            </div>
-
-            <div id="paneAccount" class="hidden smooth-fade-in">
-                <form onsubmit="saveAccount(event)" novalidate>
-                    <div class="input-group">
-                        <input type="text" id="accUsername" class="vc-input" placeholder=" " required data-name="Имя пользователя">
-                        <label class="vc-label">Имя пользователя</label>
-                    </div>
-                    <div class="input-group">
-                        <input type="email" id="accEmail" class="vc-input" placeholder=" " required data-name="Email">
-                        <label class="vc-label">Email</label>
-                    </div>
-
-                    <div style="border-top: 1px solid var(--surface-hover); border-bottom: 1px solid var(--surface-hover); margin: 1rem 0 1.5rem; padding: 1rem 0; display:flex; flex-direction:column; gap:0.5rem;">
-                        <button type="button" class="vc-btn-outline w-full flex justify-between items-center" style="border: none; padding: 0.5rem; font-weight: 500;" onclick="openPasswordModal()">
-                            <span class="flex items-center gap-2"><i class="ph ph-lock-key" style="font-size:1.2rem;"></i> Изменить пароль</span>
-                            <i class="ph ph-caret-right text-muted"></i>
-                        </button>
-                        <button type="button" class="vc-btn-outline w-full flex justify-between items-center" style="border: none; padding: 0.5rem; font-weight: 500;" onclick="openTfaSettingsModal()">
-                            <span class="flex items-center gap-2"><i class="ph ph-shield-check" style="font-size:1.2rem;"></i> Настройка 2FA</span>
-                            <div class="flex items-center gap-2">
-                                <span id="tfaStatusBadge" style="font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; background: var(--surface-hover); color: var(--text-muted);">Выкл</span>
-                                <i class="ph ph-caret-right text-muted"></i>
+            <div class="settings-panes">
+                <div id="paneProfile" class="block smooth-fade-in">
+                    <form onsubmit="saveProfile(event)" novalidate>
+                        <div class="flex justify-center mb-6">
+                            <div style="position:relative; width:100px; height:100px; cursor:pointer;" onclick="document.getElementById('settingsAvatarFile').click()">
+                                <img id="settingsAvatarPreview" src="" class="w-full h-full rounded-full object-cover" style="background:var(--surface-elevated);">
+                                <div class="absolute inset-0 flex items-center justify-center rounded-full" style="background:rgba(0,0,0,0.5); top:0; left:0; width:100%; height:100%; position:absolute;"><i class="ph ph-camera text-white" style="font-size:1.5rem;"></i></div>
                             </div>
-                        </button>
-                    </div>
-
-                    <button type="submit" class="vc-btn mb-2">Сохранить изменения</button>
-                </form>
-            </div>
-
-            <div id="paneSessions" class="hidden smooth-fade-in">
-                <div id="sessionsList" class="flex flex-col mb-4" style="min-height: 150px; position: relative;">
-                    <div class="loader-screen"><i class="ph ph-circle-notch spin" style="font-size: 2.5rem; color: var(--text-muted);"></i></div>
+                            <input type="file" id="settingsAvatarFile" class="hidden" accept="image/png, image/jpeg, image/webp" onchange="initCrop(event)">
+                        </div>
+                        <div class="input-group">
+                            <textarea id="settingsBio" class="vc-input" placeholder=" " style="height: 100px; resize:none; padding-top:24px;"></textarea>
+                            <label class="vc-label">О себе</label>
+                        </div>
+                        <div class="flex justify-between items-center p-4 mb-4" style="background: var(--surface-elevated); border-radius: var(--radius-md);">
+                            <div>
+                                <div class="font-bold mb-1">Публичные сохранёнки</div>
+                                <div class="text-xs text-muted">Другие смогут видеть ваши сохранённые посты</div>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="settingsBookmarksPublic" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <button type="submit" class="vc-btn mb-4">Обновить профиль</button>
+                    </form>
                 </div>
-                <button type="button" onclick="showConfirm('Выход', 'Точно выйти из текущего аккаунта?', logout)" class="vc-btn vc-btn-outline w-full" style="color:var(--error); border-color:rgba(255,42,95,0.3);">Выйти из текущего аккаунта</button>
+
+                <div id="paneAccount" class="hidden smooth-fade-in">
+                    <form onsubmit="saveAccount(event)" novalidate>
+                        <div class="input-group">
+                            <input type="text" id="accUsername" class="vc-input" placeholder=" " required data-name="Имя пользователя">
+                            <label class="vc-label">Имя пользователя</label>
+                        </div>
+                        <div class="input-group">
+                            <input type="email" id="accEmail" class="vc-input" placeholder=" " required data-name="Email">
+                            <label class="vc-label">Email</label>
+                        </div>
+
+                        <div style="border-top: 1px solid var(--surface-hover); border-bottom: 1px solid var(--surface-hover); margin: 1rem 0 1.5rem; padding: 1rem 0; display:flex; flex-direction:column; gap:0.5rem;">
+                            <button type="button" class="vc-btn-outline w-full flex justify-between items-center" style="border: none; padding: 0.5rem; font-weight: 500;" onclick="openPasswordModal()">
+                                <span class="flex items-center gap-2"><i class="ph ph-lock-key" style="font-size:1.2rem;"></i> Изменить пароль</span>
+                                <i class="ph ph-caret-right text-muted"></i>
+                            </button>
+                            <button type="button" class="vc-btn-outline w-full flex justify-between items-center" style="border: none; padding: 0.5rem; font-weight: 500;" onclick="openTfaSettingsModal()">
+                                <span class="flex items-center gap-2"><i class="ph ph-shield-check" style="font-size:1.2rem;"></i> Настройка 2FA</span>
+                                <div class="flex items-center gap-2">
+                                    <span id="tfaStatusBadge" style="font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; background: var(--surface-hover); color: var(--text-muted);">Выкл</span>
+                                    <i class="ph ph-caret-right text-muted"></i>
+                                </div>
+                            </button>
+                        </div>
+
+                        <button type="submit" class="vc-btn mb-2">Сохранить изменения</button>
+                    </form>
+                </div>
+
+                <div id="paneSessions" class="hidden smooth-fade-in">
+                    <div id="sessionsList" class="flex flex-col mb-4" style="min-height: 150px; position: relative;">
+                        <div class="loader-screen"><i class="ph ph-circle-notch spin" style="font-size: 2.5rem; color: var(--text-muted);"></i></div>
+                    </div>
+                    <button type="button" onclick="showConfirm('Выход', 'Точно выйти из текущего аккаунта?', logout)" class="vc-btn vc-btn-outline w-full" style="color:var(--error); border-color:rgba(255,42,95,0.3);">Выйти из текущего аккаунта</button>
+                </div>
             </div>
 
-            <div class="auth-footer-links" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--surface-hover);">
+            <div class="auth-footer-links" style="flex-shrink: 0; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--surface-hover);">
                 <a class="legal-link" onclick="event.preventDefault();openLegal('rules')">Правила</a>
                 <span class="text-muted">·</span>
                 <a class="legal-link" onclick="event.preventDefault();openLegal('privacy-policy')">Политика конфиденциальности</a>
