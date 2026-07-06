@@ -86,30 +86,38 @@
             const toast = document.createElement('div');
             toast.className = 'toast'; toast.textContent = msg;
             container.appendChild(toast);
-            let startY = 0, currentY = 0;
-            toast.addEventListener('touchstart', (e) => { startY = e.touches[0].clientY; }, {passive: true});
-            toast.addEventListener('touchmove', (e) => {
-                currentY = e.touches[0].clientY;
-                const diff = currentY - startY;
+            let startY = 0, curY = 0, swiping = false;
+            const getY = (e) => e.touches ? e.touches[0].clientY : e.clientY;
+            const onStart = (e) => { startY = getY(e); curY = startY; swiping = false; };
+            const onMove = (e) => {
+                curY = getY(e);
+                const diff = curY - startY;
+                if (Math.abs(diff) > 5) swiping = true;
                 if (diff < 0) {
                     toast.style.transform = `translateY(${diff}px)`;
                     toast.style.opacity = Math.max(0, 1 + diff / 100);
                 }
-            }, {passive: true});
-            toast.addEventListener('touchend', () => {
-                const diff = currentY - startY;
-                if (diff < -30) {
-                    toast.classList.add('fade-out');
-                    setTimeout(() => { if(toast.parentNode) toast.remove(); }, 300);
-                } else {
-                    toast.style.transform = '';
-                    toast.style.opacity = '';
+            };
+            const onEnd = () => {
+                const diff = curY - startY;
+                if (swiping && diff < -30) {
+                    dismissToast();
                 }
-            });
-            setTimeout(() => {
+                toast.style.transform = '';
+                toast.style.opacity = '';
+            };
+            const dismissToast = () => {
                 toast.classList.add('fade-out');
                 setTimeout(() => { if(toast.parentNode) toast.remove(); }, 300);
-            }, 3000);
+            };
+            toast.addEventListener('touchstart', onStart, {passive: true});
+            toast.addEventListener('touchmove', onMove, {passive: true});
+            toast.addEventListener('touchend', onEnd);
+            toast.addEventListener('mousedown', onStart);
+            toast.addEventListener('mousemove', onMove);
+            toast.addEventListener('mouseup', onEnd);
+            toast.addEventListener('mouseleave', () => { if (swiping) { toast.style.transform = ''; toast.style.opacity = ''; swiping = false; } });
+            setTimeout(dismissToast, 3000);
         };
 
         const validateFormFields = (form) => {
@@ -1693,10 +1701,6 @@
                 if (loader) list.insertBefore(item, loader);
                 else list.appendChild(item);
                 attachNotifSwipe(item);
-                item.addEventListener('click', () => {
-                    const idx = parseInt(item.dataset.notifIdx);
-                    if (window._notifData[idx]) handleNotifClick(window._notifData[idx]);
-                });
             });
         }
 
@@ -1720,25 +1724,22 @@
         function attachNotifListeners(list) {
             list.querySelectorAll('.notif-item').forEach(el => {
                 attachNotifSwipe(el);
-                el.addEventListener('click', () => {
-                    const idx = parseInt(el.dataset.notifIdx);
-                    if (window._notifData[idx]) handleNotifClick(window._notifData[idx]);
-                });
             });
         }
 
         function attachNotifSwipe(el) {
-            let startX = 0, currentX = 0, isSwiping = false;
+            let startX = 0, curX = 0, swiping = false;
+            const getX = (e) => e.touches ? e.touches[0].clientX : e.clientX;
             const onStart = (e) => {
-                startX = e.touches ? e.touches[0].clientX : e.clientX;
-                isSwiping = false;
+                startX = getX(e);
+                swiping = false;
                 el.style.transition = 'none';
                 el.classList.remove('swiping-right');
             };
             const onMove = (e) => {
-                currentX = e.touches ? e.touches[0].clientX : e.clientX;
-                const diff = currentX - startX;
-                if (Math.abs(diff) > 10) isSwiping = true;
+                curX = getX(e);
+                const diff = curX - startX;
+                if (Math.abs(diff) > 5) swiping = true;
                 if (diff > 0) {
                     el.style.transform = `translateX(${diff}px)`;
                     el.style.opacity = Math.max(0, 1 - diff / 200);
@@ -1746,26 +1747,33 @@
                 }
             };
             const onEnd = () => {
-                const diff = currentX - startX;
+                const diff = curX - startX;
                 el.style.transition = 'transform 0.3s, opacity 0.3s';
                 el.classList.remove('swiping-right');
-                if (diff > 80) {
+                if (swiping && diff > 80) {
                     el.style.transform = 'translateX(100%)';
                     el.style.opacity = '0';
                     const notifId = el.dataset.notifId;
                     if (notifId) {
-                        fetch(apiCall('mark_notification_read'), { method: 'POST', body: 'csrf_token=' + encodeURIComponent(csrfToken) + '&id=' + notifId, headers: {'Content-Type': 'application/x-www-form-urlencoded'} });
+                        fetch(apiCall('delete_notification'), { method: 'POST', body: 'csrf_token=' + encodeURIComponent(csrfToken) + '&id=' + notifId, headers: {'Content-Type': 'application/x-www-form-urlencoded'} });
                     }
                     setTimeout(() => el.remove(), 300);
+                } else if (!swiping) {
+                    const idx = parseInt(el.dataset.notifIdx);
+                    if (window._notifData && window._notifData[idx]) handleNotifClick(window._notifData[idx]);
                 } else {
                     el.style.transform = '';
                     el.style.opacity = '';
                 }
-                isSwiping = false;
+                swiping = false;
             };
             el.addEventListener('touchstart', onStart, {passive: true});
             el.addEventListener('touchmove', onMove, {passive: true});
             el.addEventListener('touchend', onEnd);
+            el.addEventListener('mousedown', onStart);
+            el.addEventListener('mousemove', onMove);
+            el.addEventListener('mouseup', onEnd);
+            el.addEventListener('mouseleave', () => { if (swiping) { el.style.transform = ''; el.style.opacity = ''; swiping = false; } });
         }
 
         function updateNotifBadge(count) {

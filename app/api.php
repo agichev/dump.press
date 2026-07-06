@@ -914,6 +914,15 @@ try {
             echo json_encode(['success' => true]);
             break;
 
+        case 'delete_notification':
+            requireAuth();
+            $id = (int)($_POST['id'] ?? 0);
+            if ($id > 0) {
+                $pdo->prepare("DELETE FROM notifications WHERE id = ? AND user_id = ?")->execute([$id, $current_session['user_id']]);
+            }
+            echo json_encode(['success' => true]);
+            break;
+
         case 'get_unread_count':
             requireAuth();
             $last_id = (int)($_GET['last_id'] ?? 0);
