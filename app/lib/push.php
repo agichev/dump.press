@@ -3,16 +3,10 @@ declare(strict_types=1);
 
 function sendFcmPush($pdo, $userId, $fromUserId, $type, $postId, $postSlug): void {
     $saJson = $GLOBALS['FIREBASE_SERVICE_ACCOUNT'] ?? '';
-    if (!$saJson) {
-        error_log("FCM: FIREBASE_SERVICE_ACCOUNT is empty — check .env");
-        return;
-    }
+    if (!$saJson) return;
 
     $sa = json_decode($saJson, true);
-    if (!$sa || !isset($sa['project_id'], $sa['client_email'], $sa['private_key'])) {
-        error_log("FCM: invalid service account JSON after base64_decode/json_decode");
-        return;
-    }
+    if (!$sa || !isset($sa['project_id'], $sa['client_email'], $sa['private_key'])) return;
 
     $projectId = $sa['project_id'];
     $username = '';
@@ -34,25 +28,12 @@ function sendFcmPush($pdo, $userId, $fromUserId, $type, $postId, $postSlug): voi
     $stmt = $pdo->prepare("SELECT token FROM fcm_tokens WHERE user_id = ?");
     $stmt->execute([$userId]);
     $tokens = $stmt->fetchAll(PDO::FETCH_COLUMN);
-    if (empty($tokens)) {
-        error_log("FCM: no tokens for user #$userId");
-        return;
-    }
+    if (empty($tokens)) return;
 
-    if (!function_exists('curl_init')) {
-        error_log("FCM: curl is not installed");
-        return;
-    }
-    if (!function_exists('openssl_sign')) {
-        error_log("FCM: openssl is not installed");
-        return;
-    }
+    if (!function_exists('curl_init') || !function_exists('openssl_sign')) return;
 
     $accessToken = getFcmAccessToken($sa);
-    if (!$accessToken) {
-        error_log("FCM: failed to obtain OAuth2 access token — check server logs above");
-        return;
-    }
+    if (!$accessToken) return;
 
     $url = "https://fcm.googleapis.com/v1/projects/$projectId/messages:send";
 
@@ -88,13 +69,8 @@ function sendFcmPush($pdo, $userId, $fromUserId, $type, $postId, $postSlug): voi
             CURLOPT_CONNECTTIMEOUT => 5,
             CURLOPT_TIMEOUT        => 10,
         ]);
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_exec($ch);
         curl_close($ch);
-
-        if ($httpCode !== 200) {
-            error_log("FCM: push failed (HTTP $httpCode) for token " . substr($token, 0, 20) . "... response: " . substr($response, 0, 500));
-        }
     }
 }
 
@@ -121,11 +97,7 @@ function getFcmAccessToken(array $sa): string {
     ]));
 
     $signature = '';
-    $signOk = openssl_sign("$header.$assertion", $signature, $sa['private_key'], OPENSSL_ALGO_SHA256);
-    if (!$signOk) {
-        error_log("FCM: openssl_sign failed — check private_key format");
-        return '';
-    }
+    if (!openssl_sign("$header.$assertion", $signature, $sa['private_key'], OPENSSL_ALGO_SHA256)) return '';
     $jwt = "$header.$assertion." . base64url_encode($signature);
 
     $ch = curl_init();
@@ -143,19 +115,12 @@ function getFcmAccessToken(array $sa): string {
     ]);
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $error = curl_error($ch);
     curl_close($ch);
 
-    if ($httpCode !== 200) {
-        error_log("FCM: token endpoint returned HTTP $httpCode — $error — response: " . substr($response, 0, 500));
-        return '';
-    }
+    if ($httpCode !== 200) return '';
 
     $data = json_decode($response, true);
-    if (!$data || empty($data['access_token'])) {
-        error_log("FCM: no access_token in token response — " . substr($response, 0, 500));
-        return '';
-    }
+    if (!$data || empty($data['access_token'])) return '';
 
     $token = $data['access_token'];
     $expiresAt = $now + ($data['expires_in'] ?? 3600) - 300;

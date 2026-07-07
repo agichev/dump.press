@@ -958,11 +958,7 @@ try {
             $pdo->prepare("DELETE FROM fcm_tokens WHERE user_id = ? AND token = ?")->execute([$current_session['user_id'], $token]);
             $stmt = $pdo->prepare("INSERT INTO fcm_tokens (user_id, token) VALUES (?, ?)");
             $stmt->execute([$current_session['user_id'], $token]);
-            $cntSt = $pdo->prepare("SELECT COUNT(*) FROM fcm_tokens WHERE user_id = ?");
-            $cntSt->execute([$current_session['user_id']]);
-            $total = (int)$cntSt->fetchColumn();
-            error_log("FCM: token registered for user #" . $current_session['user_id'] . " — total: " . $total . ", token prefix: " . substr($token, 0, 20));
-            echo json_encode(['success' => true, 'total' => $total]);
+            echo json_encode(['success' => true]);
             break;
 
         case 'unregister_fcm_token':
@@ -985,48 +981,7 @@ try {
             $pdo->prepare("DELETE FROM fcm_tokens WHERE user_id = ? AND token = ?")->execute([$current_session['user_id'], $token]);
             $stmt = $pdo->prepare("INSERT INTO fcm_tokens (user_id, token) VALUES (?, ?)");
             $stmt->execute([$current_session['user_id'], $token]);
-            $cntSt = $pdo->prepare("SELECT COUNT(*) FROM fcm_tokens WHERE user_id = ?");
-            $cntSt->execute([$current_session['user_id']]);
-            echo json_encode(['success' => true, 'total' => (int)$cntSt->fetchColumn()]);
-            break;
-
-        case 'test_fcm':
-            requireAuth();
-            require_once __DIR__ . '/lib/push.php';
-            $testResult = [];
-            $saJson = $GLOBALS['FIREBASE_SERVICE_ACCOUNT'] ?? '';
-            if (!$saJson) {
-                $testResult[] = 'FAIL: FIREBASE_SERVICE_ACCOUNT is empty';
-            } else {
-                $sa = json_decode($saJson, true);
-                if (!$sa) {
-                    $testResult[] = 'FAIL: service account JSON is invalid after base64_decode';
-                } elseif (!isset($sa['project_id'], $sa['client_email'], $sa['private_key'])) {
-                    $testResult[] = 'FAIL: service account missing project_id/client_email/private_key';
-                } else {
-                    $testResult[] = 'OK: service account parsed (project=' . $sa['project_id'] . ', email=' . $sa['client_email'] . ')';
-                    if (!function_exists('curl_init')) {
-                        $testResult[] = 'FAIL: curl extension missing';
-                    } else {
-                        $testResult[] = 'OK: curl available';
-                    }
-                    if (!function_exists('openssl_sign')) {
-                        $testResult[] = 'FAIL: openssl extension missing';
-                    } else {
-                        $testResult[] = 'OK: openssl available';
-                    }
-                    $token = getFcmAccessToken($sa);
-                    if ($token) {
-                        $testResult[] = 'OK: OAuth2 token obtained (' . substr($token, 0, 20) . '...)';
-                    } else {
-                        $testResult[] = 'FAIL: could not obtain OAuth2 token — check error log';
-                    }
-                }
-            }
-            $stmt = $pdo->prepare("SELECT COUNT(*) FROM fcm_tokens WHERE user_id = ?");
-            $stmt->execute([$current_session['user_id']]);
-            $testResult[] = 'Tokens registered for you: ' . $stmt->fetchColumn();
-            echo json_encode(['success' => true, 'tests' => $testResult]);
+            echo json_encode(['success' => true]);
             break;
 
         /* ---------------- SITEMAP / ROBOTS ---------------- */

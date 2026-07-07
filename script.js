@@ -31,22 +31,26 @@
         const isDumpApp = navigator.userAgent.includes('DumpApp');
 
         let fcmRegistered = false;
+        let fcmPollInterval = null;
 
-        async function registerFcmToken() {
-            if (fcmRegistered) return;
-            await fcmRetry();
+        if (isDumpApp) {
+            fcmPollInterval = setInterval(() => {
+                if (fcmRegistered) return;
+                const token = window.__fcmToken;
+                if (token && csrfToken) {
+                    doRegisterFcmToken(token);
+                }
+            }, 2000);
         }
 
-        window.fcmRetry = async function() {
-            if (!isDumpApp || fcmRegistered) return;
+        window.fcmRetry = function() {
+            if (fcmRegistered) return;
             const token = window.__fcmToken;
-            if (token && csrfToken) {
-                await doRegisterFcmToken(token);
-            }
+            if (token && csrfToken) doRegisterFcmToken(token);
         };
 
         async function doRegisterFcmToken(token) {
-            if (!token) return;
+            if (!token || fcmRegistered) return;
             try {
                 const res = await fetch(apiCall('register_fcm_token'), {
                     method: 'POST',
@@ -56,12 +60,9 @@
                 const data = await res.json();
                 if (data.success) {
                     fcmRegistered = true;
-                } else {
-                    showToast('FCM: ' + (data.error || 'ошибка'));
+                    if (fcmPollInterval) { clearInterval(fcmPollInterval); fcmPollInterval = null; }
                 }
-            } catch (e) {
-                showToast('FCM: ошибка соединения');
-            }
+            } catch (e) {}
         }
 
         const GUEST_VIEWED_KEY = 'guest_viewed_posts';
@@ -595,7 +596,6 @@
                     } else {
                         form.reset();
                         await init();
-                        registerFcmToken();
                         navigate('/', true);
                     }
                 } else showToast(data.error || 'Ошибка');
@@ -625,7 +625,6 @@
                 if (data.success) {
                     closeModal('tfaLoginModal');
                     await init();
-                    registerFcmToken();
                     navigate('/', true);
                 } else {
                     showToast(data.error || 'Неверный код');
