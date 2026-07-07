@@ -66,6 +66,8 @@ try {
         if (!$allow_self && $user_id == $from_user_id) return;
         $stmt = $pdo->prepare("INSERT INTO notifications (user_id, from_user_id, type, post_id, post_slug) VALUES (?, ?, ?, ?, ?)");
         $stmt->execute([$user_id, $from_user_id, $type, $post_id, $post_slug]);
+        require_once __DIR__ . '/lib/push.php';
+        sendFcmPush($pdo, $user_id, $from_user_id, $type, $post_id, $post_slug);
     }
 
     switch ($action) {
@@ -946,6 +948,25 @@ try {
                 }
             }
             echo json_encode(['success' => true, 'unread_count' => $unread_count, 'new_notifications' => $new_notifications]);
+            break;
+
+        /* ---------------- FCM TOKENS ---------------- */
+        case 'register_fcm_token':
+            requireAuth();
+            $token = trim($_POST['token'] ?? '');
+            if (strlen($token) < 50) throw new Exception('Некорректный токен');
+            $stmt = $pdo->prepare("INSERT IGNORE INTO fcm_tokens (user_id, token) VALUES (?, ?)");
+            $stmt->execute([$current_session['user_id'], $token]);
+            echo json_encode(['success' => true]);
+            break;
+
+        case 'unregister_fcm_token':
+            requireAuth();
+            $token = trim($_POST['token'] ?? '');
+            if ($token) {
+                $pdo->prepare("DELETE FROM fcm_tokens WHERE user_id = ? AND token = ?")->execute([$current_session['user_id'], $token]);
+            }
+            echo json_encode(['success' => true]);
             break;
 
         /* ---------------- SITEMAP / ROBOTS ---------------- */

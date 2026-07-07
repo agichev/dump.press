@@ -30,6 +30,21 @@
         // Mobile app detection - check for DumpApp in user agent
         const isDumpApp = navigator.userAgent.includes('DumpApp');
 
+async function registerFcmToken() {
+    if (window.AndroidBridge) {
+        const token = window.AndroidBridge.getFcmToken();
+        if (token) {
+            try {
+                await fetch(apiCall('register_fcm_token'), {
+                    method: 'POST',
+                    body: 'csrf_token=' + encodeURIComponent(csrfToken) + '&token=' + encodeURIComponent(token),
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'}
+                });
+            } catch (e) {}
+        }
+    }
+}
+
         const GUEST_VIEWED_KEY = 'guest_viewed_posts';
         function getGuestViewed() {
             try { return JSON.parse(localStorage.getItem(GUEST_VIEWED_KEY) || '[]'); } catch(e) { return []; }
@@ -561,6 +576,7 @@
                     } else {
                         form.reset();
                         await init();
+                        registerFcmToken();
                         navigate('/', true);
                     }
                 } else showToast(data.error || 'Ошибка');
@@ -590,6 +606,7 @@
                 if (data.success) {
                     closeModal('tfaLoginModal');
                     await init();
+                    registerFcmToken();
                     navigate('/', true);
                 } else {
                     showToast(data.error || 'Неверный код');

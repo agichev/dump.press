@@ -73,5 +73,8 @@ $GLOBALS['RESEND_API_KEY'] = env('RESEND_API_KEY', '');
 // Публичный базовый URL сервиса (для sitemap/SEO/ссылок).
 $GLOBALS['APP_URL'] = rtrim(env('APP_URL', ''), '/');
 
+// Firebase Cloud Messaging v1 — service account JSON (base64).
+$GLOBALS['FIREBASE_SERVICE_ACCOUNT'] = base64_decode(env('FIREBASE_SERVICE_ACCOUNT', ''), true) ?: '';
+
 // Контактная почта поддержки.
 $GLOBALS['SUPPORT_EMAIL'] = env('SUPPORT_EMAIL', 'help@dump.press');
