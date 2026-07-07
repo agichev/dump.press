@@ -132,7 +132,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android|iPhone|iPad|iPod|webOS|BlackB
 
     <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/logo.png" as="image">
     <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/style.min.css?v=8" as="style">
-    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/script.min.js?v=10" as="script">
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/script.min.js?v=8" as="script">
     <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" as="style">
 
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%23000000'/><text x='50' y='55' dominant-baseline='middle' text-anchor='middle' font-size='76' font-family='-apple-system, BlinkMacSystemFont, sans-serif' font-weight='800' fill='%23ffffff'>D</text></svg>">
@@ -715,7 +715,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android|iPhone|iPad|iPod|webOS|BlackB
             </form>
         </div>
     </div>
-    <script src="<?= htmlspecialchars($asset_base) ?>/script.min.js?v=10"></script>
+    <script src="<?= htmlspecialchars($asset_base) ?>/script.min.js?v=8"></script>
 
     <?php if ($is_mobile): ?>
     <style>
