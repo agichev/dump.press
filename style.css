@@ -586,3 +586,57 @@
             }
         }
 
+        /* ─── Install Banner (Mobile Web → App) ─── */
+        .install-banner {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: var(--surface);
+            border-top: 1px solid var(--surface-hover);
+            padding: 0.75rem 1rem;
+            padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+            display: flex; align-items: center; gap: 0.75rem;
+            z-index: 65;
+            transform: translateY(100%);
+            transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+        .install-banner.visible {
+            transform: translateY(0);
+        }
+        .install-banner-icon {
+            width: 44px; height: 44px; border-radius: 12px;
+            background: var(--surface-elevated);
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0; overflow: hidden;
+        }
+        .install-banner-icon img {
+            width: 100%; height: 100%; object-fit: cover;
+        }
+        .install-banner-text {
+            flex: 1; min-width: 0;
+        }
+        .install-banner-text .title {
+            font-size: 0.95rem; font-weight: 700;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .install-banner-text .sub {
+            font-size: 0.78rem; color: var(--text-muted);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .install-banner-btn {
+            flex-shrink: 0;
+            background: var(--accent); color: var(--accent-bg);
+            font-weight: 700; font-size: 0.85rem;
+            padding: 10px 20px; border-radius: 99px;
+            text-decoration: none; cursor: pointer;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: none; white-space: nowrap;
+        }
+        .install-banner-btn:active { transform: scale(0.95); }
+        .install-banner-close {
+            flex-shrink: 0;
+            width: 36px; height: 36px;
+            display: flex; align-items: center; justify-content: center;
+            color: var(--text-muted); cursor: pointer; border: none; background: none;
+            font-size: 1.2rem; transition: color 0.2s;
+        }
+        .install-banner-close:hover { color: var(--text-main); }
+

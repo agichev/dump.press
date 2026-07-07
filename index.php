@@ -80,6 +80,8 @@ try {
 $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
 
 $is_dump_app = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
+$ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+$is_mobile = !$is_dump_app && preg_match('/Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i', $ua);
 ?>
 <!DOCTYPE html>
 <html lang="ru">
@@ -667,5 +669,32 @@ $is_dump_app = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
         </div>
     </div>
     <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=8"></script>
+
+    <?php if ($is_mobile): ?>
+    <div id="installBanner" class="install-banner">
+        <div class="install-banner-icon"><img src="<?= $asset_base ?>/logo.png" alt="D"></div>
+        <div class="install-banner-text">
+            <div class="title">Dump</div>
+            <div class="sub">Установите приложение — быстрее, удобнее, с уведомлениями</div>
+        </div>
+        <a href="<?= $asset_base ?>/download" class="install-banner-btn">Скачать</a>
+        <button type="button" class="install-banner-close" onclick="dismissInstallBanner()" aria-label="Закрыть"><i class="ph ph-x"></i></button>
+    </div>
+    <script>
+    (function() {
+        var banner = document.getElementById('installBanner');
+        if (banner && !localStorage.getItem('dump_install_dismissed')) {
+            setTimeout(function() { banner.classList.add('visible'); }, 1500);
+        }
+    })();
+    function dismissInstallBanner() {
+        var banner = document.getElementById('installBanner');
+        if (banner) {
+            banner.classList.remove('visible');
+            try { localStorage.setItem('dump_install_dismissed', '1'); } catch(e) {}
+        }
+    }
+    </script>
+    <?php endif; ?>
 </body>
 </html>

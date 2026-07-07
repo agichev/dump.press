@@ -97,8 +97,16 @@ $apk_url = 'https://github.com/agichev/dump.mobile/releases/download/1.1/dump.ap
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.3rem;
             flex-shrink: 0;
+        }
+        .feature-icon svg {
+            width: 22px;
+            height: 22px;
+            stroke: #fff;
+            fill: none;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
         }
         .feature-text {
             font-weight: 600;
@@ -164,21 +172,21 @@ $apk_url = 'https://github.com/agichev/dump.mobile/releases/download/1.1/dump.ap
 
         <div class="features">
             <div class="feature">
-                <div class="feature-icon">📸</div>
+                <div class="feature-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M21 9h-4a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h4"/></svg></div>
                 <div>
                     <div class="feature-text">Лента контента</div>
                     <div class="feature-desc">Листайте посты в удобном вертикальном формате</div>
                 </div>
             </div>
             <div class="feature">
-                <div class="feature-icon">💬</div>
+                <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="9" y1="12" x2="15" y2="12"/></svg></div>
                 <div>
                     <div class="feature-text">Комментарии и лайки</div>
                     <div class="feature-desc">Общайтесь и поддерживайте авторов</div>
                 </div>
             </div>
             <div class="feature">
-                <div class="feature-icon">🔔</div>
+                <div class="feature-icon"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
                 <div>
                     <div class="feature-text">Push-уведомления</div>
                     <div class="feature-desc">Мгновенно узнавайте о новых публикациях</div>
@@ -196,7 +204,7 @@ $apk_url = 'https://github.com/agichev/dump.mobile/releases/download/1.1/dump.ap
             <a href="<?= $base ?>/legal/rules">Правила</a>
             <a href="<?= $base ?>/legal/privacy-policy">Политика конфиденциальности</a>
         </div>
-        <div class="attribution">Dump © 2025</div>
+        <div class="attribution">Dump © 2026</div>
     </div>
 </body>
 </html>
