@@ -1,9 +1,4 @@
 <?php
-// Принудительно тыкаем все файлы чтобы OPcache перезагрузил
-if (function_exists('opcache_reset')) { @opcache_reset(); }
-if (function_exists('apc_clear_cache')) { @apc_clear_cache(); }
-if (function_exists('apc_clear_cache')) { @apc_clear_cache('opcode'); }
-
 require __DIR__ . '/config/config.php';
 require __DIR__ . '/app/bootstrap.php';
 
