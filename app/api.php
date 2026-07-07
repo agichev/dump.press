@@ -974,6 +974,20 @@ try {
             echo json_encode(['success' => true]);
             break;
 
+        case 'register_fcm_token_native':
+            $current_session = getActiveSession();
+            if (!$current_session) {
+                echo json_encode(['success' => false, 'error' => 'Не авторизован']);
+                break;
+            }
+            $token = trim($_POST['token'] ?? '');
+            if (strlen($token) < 50) { echo json_encode(['success' => false, 'error' => 'Некорректный токен']); break; }
+            $pdo->prepare("DELETE FROM fcm_tokens WHERE user_id = ? AND token = ?")->execute([$current_session['user_id'], $token]);
+            $stmt = $pdo->prepare("INSERT INTO fcm_tokens (user_id, token) VALUES (?, ?)");
+            $stmt->execute([$current_session['user_id'], $token]);
+            echo json_encode(['success' => true]);
+            break;
+
         case 'test_fcm':
             requireAuth();
             require_once __DIR__ . '/lib/push.php';
