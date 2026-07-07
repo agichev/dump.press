@@ -20,6 +20,7 @@ function getLegalDoc(string $slug): ?array {
     $docs = legalDocs();
     if (!isset($docs[$slug])) return null;
     $doc = $docs[$slug];
+
     if (!is_file($doc['file'])) return null;
     $md = (string)file_get_contents($doc['file']);
     return [
