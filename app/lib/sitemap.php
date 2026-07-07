@@ -30,6 +30,7 @@ function outputRobotsTxt(): void {
 function outputSitemapXml(): void {
     global $pdo;
     $base = app_base_url();
+
     $urls = [];
 
     // Главная

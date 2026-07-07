@@ -354,10 +354,13 @@ try {
             $stmt_posts = $pdo->prepare("
                 SELECT p.*, u.username, u.avatar_url,
                     (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes_count,
-                    (SELECT COUNT(*) FROM likes WHERE post_id = p.id AND user_id = ?) as is_liked,
-                    (SELECT COUNT(*) FROM bookmarks WHERE post_id = p.id AND user_id = ?) as is_bookmarked,
+                    IF(lk.id IS NOT NULL, 1, 0) as is_liked,
+                    IF(bk.id IS NOT NULL, 1, 0) as is_bookmarked,
                     (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments_count
-                FROM posts p JOIN users u ON p.user_id = u.id
+                FROM posts p
+                JOIN users u ON p.user_id = u.id
+                LEFT JOIN likes lk ON lk.post_id = p.id AND lk.user_id = ?
+                LEFT JOIN bookmarks bk ON bk.post_id = p.id AND bk.user_id = ?
                 WHERE p.user_id = ? ORDER BY p.created_at DESC LIMIT 50
             ");
             $stmt_posts->execute([$current_user_id, $current_user_id, $user_id]);
@@ -369,12 +372,14 @@ try {
                 $stmt_bookmarks = $pdo->prepare("
                     SELECT p.*, u.username, u.avatar_url,
                         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes_count,
-                        (SELECT COUNT(*) FROM likes WHERE post_id = p.id AND user_id = ?) as is_liked,
-                        (SELECT COUNT(*) FROM bookmarks WHERE post_id = p.id AND user_id = ?) as is_bookmarked,
+                        IF(lk.id IS NOT NULL, 1, 0) as is_liked,
+                        IF(bk.id IS NOT NULL, 1, 0) as is_bookmarked,
                         (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments_count
                     FROM posts p
                     JOIN bookmarks b ON p.id = b.post_id
                     JOIN users u ON p.user_id = u.id
+                    LEFT JOIN likes lk ON lk.post_id = p.id AND lk.user_id = ?
+                    LEFT JOIN bookmarks bk ON bk.post_id = p.id AND bk.user_id = ?
                     WHERE b.user_id = ? ORDER BY b.created_at DESC LIMIT 50
                 ");
                 $stmt_bookmarks->execute([$current_user_id, $current_user_id, $user_id]);
@@ -454,8 +459,6 @@ try {
             $posts = [];
             $exclude_ids = [];
 
-            // Просмотренные посты гостя (localStorage) — исключаем из выдачи,
-            // чтобы после перезагрузки/клика по лого лента не начиналась заново.
             $exclude_param = $_GET['exclude'] ?? '';
             if ($exclude_param !== '') {
                 foreach (explode(',', $exclude_param) as $_pid) {
@@ -464,14 +467,18 @@ try {
                 }
             }
 
+            // Запрос одного поста по slug — с подзапросами (безопасно для любой MySQL)
             if ($requested_slug) {
                 $stmt = $pdo->prepare("
                     SELECT p.*, u.username, u.avatar_url,
                            (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes_count,
-                           (SELECT COUNT(*) FROM likes WHERE post_id = p.id AND user_id = ?) as is_liked,
-                           (SELECT COUNT(*) FROM bookmarks WHERE post_id = p.id AND user_id = ?) as is_bookmarked,
+                           IF(lk.id IS NOT NULL, 1, 0) as is_liked,
+                           IF(bk.id IS NOT NULL, 1, 0) as is_bookmarked,
                            (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments_count
-                    FROM posts p JOIN users u ON p.user_id = u.id
+                    FROM posts p
+                    JOIN users u ON p.user_id = u.id
+                    LEFT JOIN likes lk ON lk.post_id = p.id AND lk.user_id = ?
+                    LEFT JOIN bookmarks bk ON bk.post_id = p.id AND bk.user_id = ?
                     WHERE p.slug = ?
                 ");
                 $stmt->execute([$user_id, $user_id, $requested_slug]);
@@ -482,92 +489,71 @@ try {
                 }
             }
 
-            $join_cond = "";
-            $where_cond = "WHERE 1=1 ";
+            // Оптимизированная лента: LEFT JOIN для is_liked/is_bookmarked, подзапросы для counts
             $select_cols = "p.*, u.username, u.avatar_url,
                            (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes_count,
-                           (SELECT COUNT(*) FROM likes WHERE post_id = p.id AND user_id = ?) as is_liked,
-                           (SELECT COUNT(*) FROM bookmarks WHERE post_id = p.id AND user_id = ?) as is_bookmarked,
+                           IF(lk.id IS NOT NULL, 1, 0) as is_liked,
+                           IF(bk.id IS NOT NULL, 1, 0) as is_bookmarked,
                            (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments_count";
-            $order_clause = "ORDER BY p.created_at DESC";
+            $join_tables = "FROM posts p
+                           JOIN users u ON p.user_id = u.id
+                           LEFT JOIN likes lk ON lk.post_id = p.id AND lk.user_id = ?
+                           LEFT JOIN bookmarks bk ON bk.post_id = p.id AND bk.user_id = ?";
             $params = [$user_id, $user_id];
+            $where_parts = ["1=1"];
+            $order_clause = "ORDER BY p.created_at DESC";
 
             if (!empty($exclude_ids)) {
                 $safe_ids = array_map('intval', $exclude_ids);
-                $where_cond .= " AND p.id NOT IN (" . implode(',', $safe_ids) . ") ";
+                $where_parts[] = "p.id NOT IN (" . implode(',', $safe_ids) . ")";
             }
 
             if ($type === 'all' && $user_id) {
-                $join_cond = "LEFT JOIN views v ON p.id = v.post_id AND v.user_id = " . (int)$user_id . " ";
-                $where_cond .= " AND v.post_id IS NULL AND p.user_id != " . (int)$user_id . " ";
+                $join_tables .= " LEFT JOIN views v ON p.id = v.post_id AND v.user_id = ?";
+                $params[] = $user_id;
+                $where_parts[] = "v.post_id IS NULL";
+                $where_parts[] = "p.user_id != ?";
+                $params[] = $user_id;
 
-                $stmt_likes = $pdo->prepare("
-                    (SELECT p.content FROM likes l JOIN posts p ON l.post_id = p.id WHERE l.user_id = ? AND p.content != '' ORDER BY l.created_at DESC LIMIT 15)
-                    UNION
-                    (SELECT p.content FROM comments c JOIN posts p ON c.post_id = p.id WHERE c.user_id = ? AND p.content != '' ORDER BY c.created_at DESC LIMIT 10)
-                ");
-                $stmt_likes->execute([$user_id, $user_id]);
-                $likedTexts = $stmt_likes->fetchAll(PDO::FETCH_COLUMN);
-
-                $relevance_sql = " (
-                    ((SELECT COUNT(*) FROM likes WHERE post_id = p.id) * 0.15) +
-                    ((SELECT COUNT(*) FROM comments WHERE post_id = p.id) * 0.25) +
-                    IF(p.created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR), 3.5, 0) +
-                    (RAND() * 2.0)
-                ) ";
-
-                if (!empty($likedTexts)) {
-                    $allText = implode(' ', $likedTexts);
-
-                    preg_match_all('/#[a-zA-Zа-яА-ЯёЁ0-9_]+/u', mb_strtolower($allText, 'UTF-8'), $hash_matches);
-                    if (!empty($hash_matches[0])) {
-                        $top_tags = array_slice(array_unique($hash_matches[0]), 0, 7);
-                        foreach ($top_tags as $tag) {
-                            $tag_esc = $pdo->quote('%' . $tag . '%');
-                            $relevance_sql .= " + IF(p.content LIKE $tag_esc, 5.0, 0) ";
-                        }
-                    }
-
-                    preg_match_all('/[a-zA-Zа-яА-ЯёЁ]{4,}/u', mb_strtolower($allText, 'UTF-8'), $matches);
-                    if (!empty($matches[0])) {
-                        $words = array_slice(array_unique($matches[0]), 0, 15);
-                        $searchQuery = implode(' ', $words);
-                        if ($searchQuery) {
-                            $relevance_sql .= " + MATCH(p.content) AGAINST(? IN NATURAL LANGUAGE MODE) * 2.0 ";
-                            $params[] = $searchQuery;
-                        }
-                    }
-                }
-
-                $select_cols .= ", ($relevance_sql) as relevance_score";
-                $order_clause = "ORDER BY relevance_score DESC, p.created_at DESC";
+                $order_clause = "ORDER BY p.created_at DESC";
 
             } elseif ($type === 'following' && $user_id) {
-                $join_cond = "JOIN follows f ON p.user_id = f.following_id AND f.follower_id = " . (int)$user_id;
+                $join_tables .= " JOIN follows f ON p.user_id = f.following_id AND f.follower_id = ?";
+                $params[] = $user_id;
             }
 
-            $sql = "SELECT $select_cols FROM posts p JOIN users u ON p.user_id = u.id $join_cond $where_cond $order_clause LIMIT $limit";
-            $stmt = $pdo->prepare($sql);
+            $where_clause = "WHERE " . implode(' AND ', $where_parts);
+            $sql = "SELECT $select_cols $join_tables $where_clause $order_clause LIMIT " . ($limit + 5);
 
             try {
+                $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
                 $feed_posts = $stmt->fetchAll();
                 $posts = array_merge($posts, $feed_posts);
             } catch (PDOException $e) {
-                if (strpos($sql, 'MATCH') !== false) {
-                    $sql_fallback = "SELECT p.*, u.username, u.avatar_url,
-                                   (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes_count,
-                                   (SELECT COUNT(*) FROM likes WHERE post_id = p.id AND user_id = ?) as is_liked,
-                                   (SELECT COUNT(*) FROM bookmarks WHERE post_id = p.id AND user_id = ?) as is_bookmarked,
-                                   (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments_count
-                                   FROM posts p JOIN users u ON p.user_id = u.id $join_cond $where_cond ORDER BY p.created_at DESC LIMIT $limit";
-                    $stmt = $pdo->prepare($sql_fallback);
-                    $stmt->execute([$user_id, $user_id]);
-                    $feed_posts = $stmt->fetchAll();
-                    $posts = array_merge($posts, $feed_posts);
+                error_log("FEED_QUERY_ERR: " . $e->getMessage());
+                $sql_fallback = "SELECT $select_cols $join_tables $where_clause ORDER BY p.created_at DESC LIMIT $limit";
+                $stmt = $pdo->prepare($sql_fallback);
+                $stmt->execute($params);
+                $feed_posts = $stmt->fetchAll();
+                $posts = array_merge($posts, $feed_posts);
+            }
+
+            // Если мало постов — добиваем свежими
+            if (count($posts) < $limit && $type === 'all' && $user_id) {
+                $existing_ids = array_map(function($p) { return (int)$p['id']; }, $posts);
+                $existing_ids = array_merge($existing_ids, $exclude_ids);
+                if (!empty($existing_ids)) {
+                    $safe_ids = array_map('intval', $existing_ids);
+                    $id_cond = "p.id NOT IN (" . implode(',', $safe_ids) . ")";
                 } else {
-                    throw $e;
+                    $id_cond = "1=1";
                 }
+                $sql_more = "SELECT $select_cols $join_tables WHERE $id_cond AND p.user_id != ? ORDER BY p.created_at DESC LIMIT ?";
+                $stmt_more = $pdo->prepare($sql_more);
+                $stmt_more->execute([$user_id, $user_id, $user_id, $limit - count($posts)]);
+                $more_posts = $stmt_more->fetchAll();
+                $posts = array_merge($posts, $more_posts);
             }
 
             foreach ($posts as &$post) {
@@ -579,6 +565,7 @@ try {
                     $post['image_url'] = htmlspecialchars(implode(',', array_unique(array_filter($imgArr))), ENT_QUOTES | ENT_HTML5, 'UTF-8');
                 }
             }
+
             echo json_encode(['posts' => $posts]);
             break;
         }
@@ -635,6 +622,7 @@ try {
             $stmt = $pdo->prepare("INSERT INTO posts (user_id, content, image_url, slug) VALUES (?, ?, ?, ?)");
             $stmt->execute([$current_session['user_id'], $content, $image_url, $slug]);
             $new_post_id = (int)$pdo->lastInsertId();
+
             $stmt_followers = $pdo->prepare("SELECT follower_id FROM follows WHERE following_id = ?");
             $stmt_followers->execute([$current_session['user_id']]);
             $followers = $stmt_followers->fetchAll(PDO::FETCH_COLUMN);
@@ -692,6 +680,7 @@ try {
         case 'comments': {
             $post_id = (int)($_GET['post_id'] ?? 0);
             $user_id = $current_session ? (int)$current_session['user_id'] : 0;
+
             $stmt = $pdo->prepare("
                 SELECT c.*, u.username, u.avatar_url,
                     (SELECT COUNT(*) FROM comment_likes WHERE comment_id = c.id) as likes_count,
@@ -708,6 +697,7 @@ try {
                 $comment['avatar_url'] = htmlspecialchars($comment['avatar_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
                 $comment['image_url'] = htmlspecialchars($comment['image_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
             }
+
             echo json_encode(['comments' => $comments]);
             break;
         }
@@ -883,6 +873,7 @@ try {
             requireAuth();
             $offset = (int)($_GET['offset'] ?? 0);
             $limit = min((int)($_GET['limit'] ?? 20), 50);
+
             $stmt = $pdo->prepare("
                 SELECT n.id, n.type, n.post_id, n.post_slug, n.is_read, n.created_at,
                     u.id as from_id, u.username as from_username, u.avatar_url as from_avatar_url
@@ -902,6 +893,7 @@ try {
             $stmt_unread = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0");
             $stmt_unread->execute([$current_session['user_id']]);
             $unread_count = (int)$stmt_unread->fetchColumn();
+
             echo json_encode(['success' => true, 'notifications' => $notifications, 'unread_count' => $unread_count]);
             break;
 
@@ -928,6 +920,7 @@ try {
         case 'get_unread_count':
             requireAuth();
             $last_id = (int)($_GET['last_id'] ?? 0);
+
             $stmt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0");
             $stmt->execute([$current_session['user_id']]);
             $unread_count = (int)$stmt->fetchColumn();
@@ -947,6 +940,7 @@ try {
                     $nn['from_username'] = htmlspecialchars($nn['from_username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
                 }
             }
+
             echo json_encode(['success' => true, 'unread_count' => $unread_count, 'new_notifications' => $new_notifications]);
             break;
 
