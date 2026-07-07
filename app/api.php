@@ -53,7 +53,7 @@ function requireAuth() {
 }
 
 // CSRF для всех POST, кроме публичных эндпоинтов аутентификации.
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array($action, ['login', 'register', 'tfa_verify_login'], true)) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array($action, ['login', 'register', 'tfa_verify_login', 'register_fcm_token_native'], true)) {
     $client_csrf = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf_token'] ?? '';
     if (!$current_session || !hash_equals($current_session['csrf_token'], $client_csrf)) {
         echo json_encode(['success' => false, 'error' => 'Ошибка безопасности (CSRF). Пожалуйста, обновите страницу.']);

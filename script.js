@@ -33,19 +33,16 @@
         let fcmRegistered = false;
 
         async function registerFcmToken() {
-            if (!window.AndroidBridge || fcmRegistered) return;
-            for (let i = 0; i < 60; i++) {
-                const token = window.AndroidBridge.getFcmToken();
-                if (token) {
-                    await doRegisterFcmToken(token);
-                    return;
-                }
-                await new Promise(r => setTimeout(r, 1000));
-            }
+            if (fcmRegistered) return;
+            await fcmRetry();
         }
 
-        window.registerFcmTokenNow = async function(token) {
-            if (csrfToken && !fcmRegistered) await doRegisterFcmToken(token);
+        window.fcmRetry = async function() {
+            if (!isDumpApp || fcmRegistered) return;
+            const token = window.__fcmToken;
+            if (token && csrfToken) {
+                await doRegisterFcmToken(token);
+            }
         };
 
         async function doRegisterFcmToken(token) {
