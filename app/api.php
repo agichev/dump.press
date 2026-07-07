@@ -955,9 +955,14 @@ try {
             requireAuth();
             $token = trim($_POST['token'] ?? '');
             if (strlen($token) < 50) throw new Exception('Некорректный токен');
-            $stmt = $pdo->prepare("INSERT IGNORE INTO fcm_tokens (user_id, token) VALUES (?, ?)");
+            $pdo->prepare("DELETE FROM fcm_tokens WHERE user_id = ? AND token = ?")->execute([$current_session['user_id'], $token]);
+            $stmt = $pdo->prepare("INSERT INTO fcm_tokens (user_id, token) VALUES (?, ?)");
             $stmt->execute([$current_session['user_id'], $token]);
-            echo json_encode(['success' => true]);
+            $cntSt = $pdo->prepare("SELECT COUNT(*) FROM fcm_tokens WHERE user_id = ?");
+            $cntSt->execute([$current_session['user_id']]);
+            $total = (int)$cntSt->fetchColumn();
+            error_log("FCM: token registered for user #" . $current_session['user_id'] . " — total: " . $total . ", token prefix: " . substr($token, 0, 20));
+            echo json_encode(['success' => true, 'total' => $total]);
             break;
 
         case 'unregister_fcm_token':
