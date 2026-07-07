@@ -113,10 +113,6 @@ try {
     try { $pdo->exec("CREATE INDEX idx_likes_post ON likes(post_id)"); } catch (PDOException $e) {}
     try { $pdo->exec("CREATE INDEX idx_comments_post ON comments(post_id)"); } catch (PDOException $e) {}
 
-    // Денормализованные счётчики + дополнительные индексы (если БД позволяет)
-    try { $pdo->exec("ALTER TABLE posts ADD COLUMN likes_count INT NOT NULL DEFAULT 0"); } catch (PDOException $e) {}
-    try { $pdo->exec("ALTER TABLE posts ADD COLUMN comments_count INT NOT NULL DEFAULT 0"); } catch (PDOException $e) {}
-
     try { $pdo->exec("ALTER TABLE users ADD COLUMN tfa_enabled TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE users ADD COLUMN tfa_method VARCHAR(20) DEFAULT ''"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE users ADD COLUMN tfa_secret VARCHAR(255) DEFAULT ''"); } catch (PDOException $e) {}
