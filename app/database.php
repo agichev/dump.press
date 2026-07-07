@@ -113,18 +113,9 @@ try {
     try { $pdo->exec("CREATE INDEX idx_likes_post ON likes(post_id)"); } catch (PDOException $e) {}
     try { $pdo->exec("CREATE INDEX idx_comments_post ON comments(post_id)"); } catch (PDOException $e) {}
 
-    // Денормализованные счётчики (убирают COUNT(*) подзапросы в ленте)
+    // Денормализованные счётчики + дополнительные индексы (если БД позволяет)
     try { $pdo->exec("ALTER TABLE posts ADD COLUMN likes_count INT NOT NULL DEFAULT 0"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE posts ADD COLUMN comments_count INT NOT NULL DEFAULT 0"); } catch (PDOException $e) {}
-    try { $pdo->exec("CREATE INDEX idx_posts_likes ON posts(likes_count)"); } catch (PDOException $e) {}
-
-    // Индексы для быстрых проверок уникальности и уведомлений
-    try { $pdo->exec("CREATE INDEX idx_notifications_user_created ON notifications(user_id, created_at DESC)"); } catch (PDOException $e) {}
-    try { $pdo->exec("CREATE INDEX idx_temp_auth_lookup ON temp_auth(token, type, expires_at)"); } catch (PDOException $e) {}
-    try { $pdo->exec("CREATE INDEX idx_sessions_expires ON sessions(expires_at)"); } catch (PDOException $e) {}
-    try { $pdo->exec("CREATE INDEX idx_likes_user_post ON likes(user_id, post_id)"); } catch (PDOException $e) {}
-    try { $pdo->exec("CREATE INDEX idx_bookmarks_user_post ON bookmarks(user_id, post_id)"); } catch (PDOException $e) {}
-    try { $pdo->exec("CREATE INDEX idx_follows_follower ON follows(follower_id)"); } catch (PDOException $e) {}
 
     try { $pdo->exec("ALTER TABLE users ADD COLUMN tfa_enabled TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE users ADD COLUMN tfa_method VARCHAR(20) DEFAULT ''"); } catch (PDOException $e) {}

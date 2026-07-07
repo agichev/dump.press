@@ -353,10 +353,10 @@ try {
 
             $stmt_posts = $pdo->prepare("
                 SELECT p.*, u.username, u.avatar_url,
-                    p.likes_count,
+                    (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes_count,
                     IF(lk.id IS NOT NULL, 1, 0) as is_liked,
                     IF(bk.id IS NOT NULL, 1, 0) as is_bookmarked,
-                    p.comments_count
+                    (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments_count
                 FROM posts p
                 JOIN users u ON p.user_id = u.id
                 LEFT JOIN likes lk ON lk.post_id = p.id AND lk.user_id = ?
@@ -371,10 +371,10 @@ try {
             if ($show_bookmarks) {
                 $stmt_bookmarks = $pdo->prepare("
                     SELECT p.*, u.username, u.avatar_url,
-                        p.likes_count,
+                        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes_count,
                         IF(lk.id IS NOT NULL, 1, 0) as is_liked,
                         IF(bk.id IS NOT NULL, 1, 0) as is_bookmarked,
-                        p.comments_count
+                        (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments_count
                     FROM posts p
                     JOIN bookmarks b ON p.id = b.post_id
                     JOIN users u ON p.user_id = u.id
@@ -467,14 +467,14 @@ try {
                 }
             }
 
-            // Запрос одного поста по slug (без подзапросов — используем денормализованные счётчики)
+            // Запрос одного поста по slug — с подзапросами (безопасно для любой MySQL)
             if ($requested_slug) {
                 $stmt = $pdo->prepare("
                     SELECT p.*, u.username, u.avatar_url,
-                           p.likes_count,
+                           (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes_count,
                            IF(lk.id IS NOT NULL, 1, 0) as is_liked,
                            IF(bk.id IS NOT NULL, 1, 0) as is_bookmarked,
-                           p.comments_count
+                           (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments_count
                     FROM posts p
                     JOIN users u ON p.user_id = u.id
                     LEFT JOIN likes lk ON lk.post_id = p.id AND lk.user_id = ?
@@ -489,12 +489,12 @@ try {
                 }
             }
 
-            // Оптимизированная лента: LEFT JOIN вместо подзапросов, денормализованные счётчики
+            // Оптимизированная лента: LEFT JOIN для is_liked/is_bookmarked, подзапросы для counts
             $select_cols = "p.*, u.username, u.avatar_url,
-                           p.likes_count,
+                           (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes_count,
                            IF(lk.id IS NOT NULL, 1, 0) as is_liked,
                            IF(bk.id IS NOT NULL, 1, 0) as is_bookmarked,
-                           p.comments_count";
+                           (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments_count";
             $join_tables = "FROM posts p
                            JOIN users u ON p.user_id = u.id
                            LEFT JOIN likes lk ON lk.post_id = p.id AND lk.user_id = ?
@@ -515,9 +515,7 @@ try {
                 $where_parts[] = "p.user_id != ?";
                 $params[] = $user_id;
 
-                $order_clause = "ORDER BY
-                    (p.likes_count * 0.15 + p.comments_count * 0.25 + IF(p.created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR), 3.5, 0)) DESC,
-                    p.created_at DESC";
+                $order_clause = "ORDER BY p.created_at DESC";
 
             } elseif ($type === 'following' && $user_id) {
                 $join_tables .= " JOIN follows f ON p.user_id = f.following_id AND f.follower_id = ?";
@@ -534,16 +532,14 @@ try {
                 $posts = array_merge($posts, $feed_posts);
             } catch (PDOException $e) {
                 error_log("FEED_QUERY_ERR: " . $e->getMessage());
-                // Fallback: убираем MATCH/сложные выражения, но JOIN оставляем
-                $simple_order = "ORDER BY p.created_at DESC";
-                $sql_fallback = "SELECT $select_cols $join_tables $where_clause $simple_order LIMIT $limit";
+                $sql_fallback = "SELECT $select_cols $join_tables $where_clause ORDER BY p.created_at DESC LIMIT $limit";
                 $stmt = $pdo->prepare($sql_fallback);
                 $stmt->execute($params);
                 $feed_posts = $stmt->fetchAll();
                 $posts = array_merge($posts, $feed_posts);
             }
 
-            // Если мало постов — добиваем свежими (без релевантности)
+            // Если мало постов — добиваем свежими
             if (count($posts) < $limit && $type === 'all' && $user_id) {
                 $existing_ids = array_map(function($p) { return (int)$p['id']; }, $posts);
                 $existing_ids = array_merge($existing_ids, $exclude_ids);
@@ -553,17 +549,7 @@ try {
                 } else {
                     $id_cond = "1=1";
                 }
-                $sql_more = "SELECT p.*, u.username, u.avatar_url,
-                            p.likes_count,
-                            IF(lk.id IS NOT NULL, 1, 0) as is_liked,
-                            IF(bk.id IS NOT NULL, 1, 0) as is_bookmarked,
-                            p.comments_count
-                            FROM posts p
-                            JOIN users u ON p.user_id = u.id
-                            LEFT JOIN likes lk ON lk.post_id = p.id AND lk.user_id = ?
-                            LEFT JOIN bookmarks bk ON bk.post_id = p.id AND bk.user_id = ?
-                            WHERE $id_cond AND p.user_id != ?
-                            ORDER BY p.created_at DESC LIMIT ?";
+                $sql_more = "SELECT $select_cols $join_tables WHERE $id_cond AND p.user_id != ? ORDER BY p.created_at DESC LIMIT ?";
                 $stmt_more = $pdo->prepare($sql_more);
                 $stmt_more->execute([$user_id, $user_id, $user_id, $limit - count($posts)]);
                 $more_posts = $stmt_more->fetchAll();
@@ -662,11 +648,9 @@ try {
             $stmt->execute([$user_id, $post_id]);
             if ($stmt->fetch()) {
                 $pdo->prepare("DELETE FROM likes WHERE user_id = ? AND post_id = ?")->execute([$user_id, $post_id]);
-                $pdo->prepare("UPDATE posts SET likes_count = GREATEST(likes_count - 1, 0) WHERE id = ?")->execute([$post_id]);
                 echo json_encode(['liked' => false]);
             } else {
                 $pdo->prepare("INSERT INTO likes (user_id, post_id) VALUES (?, ?)")->execute([$user_id, $post_id]);
-                $pdo->prepare("UPDATE posts SET likes_count = likes_count + 1 WHERE id = ?")->execute([$post_id]);
                 $stmt_post = $pdo->prepare("SELECT user_id, slug FROM posts WHERE id = ?");
                 $stmt_post->execute([$post_id]);
                 $post_info = $stmt_post->fetch();
@@ -699,12 +683,9 @@ try {
 
             $stmt = $pdo->prepare("
                 SELECT c.*, u.username, u.avatar_url,
-                    COALESCE(cl.cnt, 0) as likes_count,
-                    IF(cl_my.id IS NOT NULL, 1, 0) as is_liked
-                FROM comments c
-                JOIN users u ON c.user_id = u.id
-                LEFT JOIN (SELECT comment_id, COUNT(*) as cnt FROM comment_likes GROUP BY comment_id) cl ON cl.comment_id = c.id
-                LEFT JOIN comment_likes cl_my ON cl_my.comment_id = c.id AND cl_my.user_id = ?
+                    (SELECT COUNT(*) FROM comment_likes WHERE comment_id = c.id) as likes_count,
+                    (SELECT COUNT(*) FROM comment_likes WHERE comment_id = c.id AND user_id = ?) as is_liked
+                FROM comments c JOIN users u ON c.user_id = u.id
                 WHERE c.post_id = ? ORDER BY c.created_at ASC LIMIT 150
             ");
             $stmt->execute([$user_id, $post_id]);
@@ -742,7 +723,6 @@ try {
 
             $stmt = $pdo->prepare("INSERT INTO comments (user_id, post_id, content, image_url, parent_id) VALUES (?, ?, ?, ?, ?)");
             $stmt->execute([$current_session['user_id'], $post_id, $content, $image_url, $parent_id]);
-            $pdo->prepare("UPDATE posts SET comments_count = comments_count + 1 WHERE id = ?")->execute([$post_id]);
             $stmt_post = $pdo->prepare("SELECT user_id, slug FROM posts WHERE id = ?");
             $stmt_post->execute([$post_id]);
             $post_info = $stmt_post->fetch();
@@ -755,9 +735,6 @@ try {
         case 'delete_comment':
             requireAuth();
             $id = (int)($_POST['id'] ?? 0);
-            $stmt = $pdo->prepare("SELECT post_id FROM comments WHERE id = ?");
-            $stmt->execute([$id]);
-            $del_comment = $stmt->fetch();
             $stmt = $pdo->prepare("
                 DELETE FROM comments
                 WHERE id = ? AND (
@@ -766,9 +743,6 @@ try {
                 )
             ");
             $stmt->execute([$id, $current_session['user_id'], $current_session['user_id']]);
-            if ($stmt->rowCount() > 0 && $del_comment) {
-                $pdo->prepare("UPDATE posts SET comments_count = GREATEST(comments_count - 1, 0) WHERE id = ?")->execute([(int)$del_comment['post_id']]);
-            }
             echo json_encode(['success' => true]);
             break;
 
