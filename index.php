@@ -16,6 +16,10 @@ if ($_req === 'robots.txt') {
 if ($_req === 'sitemap.xml' || isset($_GET['sitemap'])) {
     outputSitemapXml();
 }
+if ($_req === 'download') {
+    require __DIR__ . '/app/download.php';
+    exit;
+}
 
 if (isset($_GET['api'])) {
     require __DIR__ . '/app/api.php';

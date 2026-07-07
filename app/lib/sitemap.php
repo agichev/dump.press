@@ -35,6 +35,9 @@ function outputSitemapXml(): void {
     // Главная
     $urls[] = ['loc' => $base . '/', 'priority' => '1.0', 'freq' => 'hourly'];
 
+    // Страница загрузки приложения
+    $urls[] = ['loc' => $base . '/download', 'priority' => '0.8', 'freq' => 'monthly'];
+
     // Статичные документы
     foreach (['privacy-policy', 'rules'] as $slug) {
         $urls[] = ['loc' => $base . '/legal/' . $slug, 'priority' => '0.6', 'freq' => 'yearly'];
