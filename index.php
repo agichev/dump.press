@@ -671,26 +671,114 @@ $is_mobile = !$is_dump_app && preg_match('/Android|iPhone|iPad|iPod|webOS|BlackB
     <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=8"></script>
 
     <?php if ($is_mobile): ?>
-    <div id="installBanner" class="install-banner">
-        <div class="install-banner-icon"><img src="<?= $asset_base ?>/logo.png" alt="D"></div>
-        <div class="install-banner-text">
-            <div class="title">Dump</div>
-            <div class="sub">Установите приложение — быстрее, удобнее, с уведомлениями</div>
+    <style>
+        #installModal {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh;
+            background: rgba(0,0,0,0.7);
+            z-index: 200;
+            display: flex; align-items: flex-end; justify-content: center;
+            opacity: 0; visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        #installModal.open { opacity: 1; visibility: visible; }
+        #installModal .sheet {
+            width: 100%; max-width: 400px;
+            background: #0a0a0a;
+            border-radius: 24px 24px 0 0;
+            padding: 2rem 1.5rem;
+            padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+            transform: translateY(100%);
+            transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+            text-align: center;
+        }
+        #installModal.open .sheet { transform: translateY(0); }
+        #installModal .handle {
+            width: 40px; height: 5px; border-radius: 4px;
+            background: #1a1a1a; margin: 0 auto 1.5rem;
+        }
+        #installModal .icon {
+            width: 72px; height: 72px; border-radius: 20px;
+            background: #111; margin: 0 auto 1rem;
+            display: flex; align-items: center; justify-content: center;
+            overflow: hidden;
+        }
+        #installModal .icon img { width: 100%; height: 100%; object-fit: cover; }
+        #installModal h2 {
+            font-size: 1.5rem; font-weight: 800;
+            letter-spacing: -0.5px; margin-bottom: 0.3rem;
+        }
+        #installModal .desc {
+            color: #808080; font-size: 0.95rem;
+            line-height: 1.5; margin-bottom: 1.5rem;
+        }
+        #installModal .benefits {
+            display: flex; flex-direction: column; gap: 0.6rem;
+            margin-bottom: 1.5rem; text-align: left;
+        }
+        #installModal .benefit {
+            display: flex; align-items: center; gap: 0.75rem;
+            font-size: 0.9rem; font-weight: 500;
+        }
+        #installModal .benefit svg {
+            width: 20px; height: 20px; flex-shrink: 0;
+            stroke: #fff; fill: none; stroke-width: 1.8;
+            stroke-linecap: round; stroke-linejoin: round;
+        }
+        #installModal .btn {
+            display: block; width: 100%;
+            background: #fff; color: #000;
+            font-weight: 700; font-size: 1rem;
+            padding: 16px 24px; border-radius: 14px;
+            text-decoration: none; cursor: pointer;
+            border: none; transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        #installModal .btn:active { transform: scale(0.97); }
+        #installModal .skip {
+            display: block; width: 100%;
+            background: none; border: none;
+            color: #808080; font-size: 0.85rem;
+            padding: 12px; cursor: pointer; margin-top: 0.5rem;
+            transition: color 0.2s;
+        }
+        #installModal .skip:hover { color: #fff; }
+    </style>
+    <div id="installModal" onclick="if(event.target===this) dismissInstallModal()">
+        <div class="sheet">
+            <div class="handle"></div>
+            <div class="icon"><img src="<?= $asset_base ?>/logo.png" alt="Dump"></div>
+            <h2>Dump</h2>
+            <div class="desc">Установите приложение — быстрее, удобнее, с уведомлениями</div>
+            <div class="benefits">
+                <div class="benefit">
+                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    Мгновенные push-уведомления
+                </div>
+                <div class="benefit">
+                    <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                    Высокая скорость и плавность
+                </div>
+                <div class="benefit">
+                    <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    Авторизация без капчи
+                </div>
+            </div>
+            <a href="<?= $asset_base ?>/download" class="btn">Скачать</a>
+            <button type="button" class="skip" onclick="dismissInstallModal()">Не сейчас</button>
         </div>
-        <a href="<?= $asset_base ?>/download" class="install-banner-btn">Скачать</a>
-        <button type="button" class="install-banner-close" onclick="dismissInstallBanner()" aria-label="Закрыть"><i class="ph ph-x"></i></button>
     </div>
     <script>
     (function() {
-        var banner = document.getElementById('installBanner');
-        if (banner && !localStorage.getItem('dump_install_dismissed')) {
-            setTimeout(function() { banner.classList.add('visible'); }, 1500);
+        if (!localStorage.getItem('dump_install_dismissed')) {
+            setTimeout(function() {
+                var m = document.getElementById('installModal');
+                if (m) m.classList.add('open');
+            }, 2000);
         }
     })();
-    function dismissInstallBanner() {
-        var banner = document.getElementById('installBanner');
-        if (banner) {
-            banner.classList.remove('visible');
+    function dismissInstallModal() {
+        var m = document.getElementById('installModal');
+        if (m) {
+            m.classList.remove('open');
             try { localStorage.setItem('dump_install_dismissed', '1'); } catch(e) {}
         }
     }
