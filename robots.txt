@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /create
+Disallow: /login
+Disallow: /register
+Disallow: /settings
+Disallow: /notifications
+
+Sitemap: /index.php?api=sitemap
