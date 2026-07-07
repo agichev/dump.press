@@ -35,13 +35,21 @@ $turnstile_enabled    = $turnstile_site_key !== '' && $turnstile_secret_key !== 
 $random_titles = ["Dump", "Настоящий Dump"];
 $seo_title = $random_titles[array_rand($random_titles)];
 $seo_desc = "Dump — это место, где ты можешь делиться фотографиями, мыслями и находить крутой контент от других людей.";
-$seo_image = "https://ui-avatars.com/api/?name=D&background=000&color=fff&size=512";
+$seo_image = '';
+$seo_keywords = 'Dump, социальная сеть, фото, контент, общение, дамп';
+$seo_jsonld = '';
 $legal_prerender = ['slug' => '', 'title' => '', 'html' => ''];
+$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+$current_url = $protocol . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $_SERVER['REQUEST_URI'];
+$base_url = app_base_url();
+$og_image_url = $base_url . '/watchindump.png';
+$seo_image = $og_image_url;
 
 try {
+
     if (isset($path_parts[0]) && $path_parts[0] === 'post' && !empty($path_parts[1])) {
         $slug = $path_parts[1];
-        $stmt = $pdo->prepare("SELECT p.content, p.image_url, u.username FROM posts p JOIN users u ON p.user_id = u.id WHERE p.slug = ?");
+        $stmt = $pdo->prepare("SELECT p.content, p.image_url, p.created_at, u.username FROM posts p JOIN users u ON p.user_id = u.id WHERE p.slug = ?");
         $stmt->execute([$slug]);
         if ($post = $stmt->fetch()) {
             $seo_title = "Публикация от @" . $post['username'] . " | Dump";
@@ -49,10 +57,16 @@ try {
             if ($text_clean) {
                 $seo_desc = mb_substr($text_clean, 0, 150) . (mb_strlen($text_clean) > 150 ? '...' : '');
             }
-            if (!empty($post['image_url'])) {
-                $images = explode(',', $post['image_url']);
-                $seo_image = trim($images[0]);
-            }
+            $seo_keywords = generateSeoKeywords($text_clean);
+            $seo_jsonld = buildJsonLd('article', [
+                'title' => $seo_title,
+                'description' => $seo_desc,
+                'image' => $og_image_url,
+                'author' => '@' . $post['username'],
+                'date' => !empty($post['created_at']) ? date('c', strtotime($post['created_at'])) : date('c'),
+                'url' => $current_url,
+                'keywords' => $seo_keywords,
+            ]);
         }
     } elseif (isset($path_parts[0]) && $path_parts[0] === 'profile' && !empty($path_parts[1])) {
         $uid = (int)$path_parts[1];
@@ -62,9 +76,13 @@ try {
             $seo_title = "@" . $user['username'] . " | Профиль Dump";
             $bio_clean = trim(preg_replace('/\s+/', ' ', strip_tags((string)$user['bio'])));
             $seo_desc = $bio_clean ? (mb_substr($bio_clean, 0, 150) . '...') : "Смотрите публикации пользователя @" . $user['username'] . " на Dump.";
-            if (!empty($user['avatar_url'])) {
-                $seo_image = getProxyUrl(trim($user['avatar_url']));
-            }
+            $seo_keywords = 'профиль, @' . $user['username'] . ', ' . ($bio_clean ? mb_substr($bio_clean, 0, 60) : 'Dump');
+            $seo_jsonld = buildJsonLd('profile', [
+                'title' => $seo_title,
+                'description' => $seo_desc,
+                'image' => $og_image_url,
+                'username' => $user['username'],
+            ]);
         }
     } elseif (isset($path_parts[0]) && $path_parts[0] === 'legal' && !empty($path_parts[1])) {
         $doc = getLegalDoc(preg_replace('/[^a-z0-9-]/', '', $path_parts[1]));
@@ -73,7 +91,10 @@ try {
             $seo_title = $doc['title'] . " | Dump";
             $plain = trim(preg_replace('/\s+/', ' ', strip_tags($doc['html'])));
             $seo_desc = $plain ? (mb_substr($plain, 0, 150) . '...') : $doc['title'];
+            $seo_keywords = $doc['title'] . ', Dump, правила, политика конфиденциальности';
         }
+    } else {
+        $seo_jsonld = buildJsonLd('website') . "\n    " . buildJsonLd('organization');
     }
 } catch (Exception $e) {}
 
@@ -95,10 +116,21 @@ $is_mobile = !$is_dump_app && preg_match('/Android|iPhone|iPad|iPod|webOS|BlackB
     <meta property="og:description" content="<?= htmlspecialchars($seo_desc, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
     <meta property="og:image" content="<?= htmlspecialchars($seo_image, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
     <meta property="og:type" content="website">
+    <meta property="og:locale" content="ru_RU">
+    <meta property="og:site_name" content="Dump">
+    <meta property="og:url" content="<?= htmlspecialchars($protocol . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $_SERVER['REQUEST_URI'], ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
     <meta name="twitter:card" content="summary_large_image">
-    <link rel="canonical" href="<?= htmlspecialchars(app_base_url() . '/' . $_req, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
+    <meta name="twitter:site" content="@dump">
+    <meta name="keywords" content="<?= htmlspecialchars($seo_keywords, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
+    <link rel="canonical" href="<?= htmlspecialchars(rtrim(app_base_url(), '/') . '/' . ltrim($_req, '/'), ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
 
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%23000000'/><text x='50' y='55' dominant-baseline='middle' text-anchor='middle' font-size='76' font-family='-apple-system, BlinkMacSystemFont, sans-serif' font-weight='800' fill='%23ffffff'>D</text></svg>">
+    <link rel="icon" href="<?= htmlspecialchars($asset_base) ?>/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="<?= htmlspecialchars($asset_base) ?>/logo.png">
+    <link rel="manifest" href="<?= htmlspecialchars($asset_base) ?>/site.webmanifest">
+    <meta name="theme-color" content="#000000">
+    <meta name="msapplication-TileColor" content="#000000">
+    <meta name="msapplication-TileImage" content="<?= htmlspecialchars($asset_base) ?>/favicon.ico">
 
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
@@ -122,6 +154,9 @@ $is_mobile = !$is_dump_app && preg_match('/Android|iPhone|iPad|iPod|webOS|BlackB
         };
     </script>
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=turnstileOnLoad&render=explicit" async defer></script>
+    <?php endif; ?>
+    <?php if ($seo_jsonld): ?>
+    <?= $seo_jsonld ?>
     <?php endif; ?>
     <?php if ($is_dump_app): ?>
     <style>.bottom-nav{display:flex!important}#mainNav .icon-btn{display:none!important}#navBackBtn{display:flex!important}#mainNav.show-notif-btn #navNotifBtn{display:flex!important}.post-wrapper{max-width:100%!important;width:100%!important;border-radius:0!important}body{padding-bottom:56px!important}</style>

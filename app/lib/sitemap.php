@@ -51,30 +51,40 @@ function outputSitemapXml(): void {
         }
     } catch (Throwable $e) {}
 
-    // Публикации (последние 50000)
+    // Публикации (последние 100000)
     try {
-        $stmt = $pdo->query("SELECT slug, created_at FROM posts WHERE slug IS NOT NULL AND slug <> '' ORDER BY created_at DESC LIMIT 50000");
+        $stmt = $pdo->query("SELECT slug, created_at, image_url FROM posts WHERE slug IS NOT NULL AND slug <> '' ORDER BY created_at DESC LIMIT 100000");
         foreach ($stmt->fetchAll() as $row) {
             $lastmod = !empty($row['created_at']) ? date('c', strtotime((string)$row['created_at'])) : '';
-            $urls[] = [
+            $entry = [
                 'loc'      => $base . '/post/' . rawurlencode((string)$row['slug']),
                 'priority' => '0.8',
                 'freq'     => 'monthly',
                 'lastmod'  => $lastmod,
             ];
+            if (!empty($row['image_url'])) {
+                $images = explode(',', $row['image_url']);
+                $entry['images'] = array_map('trim', array_slice($images, 0, 5));
+            }
+            $urls[] = $entry;
         }
     } catch (Throwable $e) {}
 
     header('Content-Type: application/xml; charset=utf-8');
     header('Cache-Control: public, max-age=1800');
     echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
-    echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
+    echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="https://www.google.com/schemas/sitemap-image/1.1">' . "\n";
     foreach ($urls as $u) {
         echo "  <url>\n";
         echo "    <loc>" . url_escape($u['loc']) . "</loc>\n";
         if (!empty($u['lastmod'])) echo "    <lastmod>" . $u['lastmod'] . "</lastmod>\n";
         echo "    <changefreq>" . $u['freq'] . "</changefreq>\n";
         echo "    <priority>" . $u['priority'] . "</priority>\n";
+        if (!empty($u['images'])) {
+            foreach ($u['images'] as $img) {
+                echo "    <image:image><image:loc>" . url_escape($img) . "</image:loc></image:image>\n";
+            }
+        }
         echo "  </url>\n";
     }
     echo "</urlset>\n";

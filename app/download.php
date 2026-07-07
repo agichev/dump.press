@@ -12,12 +12,22 @@ $apk_url = 'https://github.com/agichev/dump.mobile/releases/download/1.1/dump.ap
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dump — Мобильное приложение</title>
     <meta name="description" content="Скачайте мобильное приложение Dump и оставайтесь на связи с сообществом. Делитесь фотографиями, мыслями и находите крутой контент.">
+    <meta name="keywords" content="Dump, мобильное приложение, скачать, Android, APK, социальная сеть, фото, контент">
     <meta property="og:title" content="Dump — Мобильное приложение">
     <meta property="og:description" content="Скачайте мобильное приложение Dump и оставайтесь на связи с сообществом.">
-    <meta property="og:image" content="<?= $base_url ?>/logo.png">
+    <meta property="og:image" content="<?= $base_url ?>/watchindump.png">
     <meta property="og:type" content="website">
+    <meta property="og:locale" content="ru_RU">
+    <meta property="og:site_name" content="Dump">
+    <meta property="og:url" content="<?= $base_url ?>/download">
     <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@dump">
+    <meta name="theme-color" content="#000000">
+    <meta name="msapplication-TileColor" content="#000000">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%23000000'/><text x='50' y='55' dominant-baseline='middle' text-anchor='middle' font-size='76' font-family='-apple-system, BlinkMacSystemFont, sans-serif' font-weight='800' fill='%23ffffff'>D</text></svg>">
+    <link rel="icon" href="<?= $base ?>/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="<?= $base ?>/logo.png">
+    <link rel="manifest" href="<?= $base ?>/site.webmanifest">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
