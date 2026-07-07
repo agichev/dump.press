@@ -107,10 +107,6 @@ try {
         );
     ");
 
-    // Удаление мусорных колонок, которые могли остаться от моих ALTER TABLE
-    try { $pdo->exec("ALTER TABLE posts DROP COLUMN likes_count"); } catch (PDOException $e) {}
-    try { $pdo->exec("ALTER TABLE posts DROP COLUMN comments_count"); } catch (PDOException $e) {}
-
     try { $pdo->exec("CREATE UNIQUE INDEX idx_posts_slug ON posts(slug)"); } catch (PDOException $e) {}
     try { $pdo->exec("CREATE FULLTEXT INDEX idx_fulltext_content ON posts(content)"); } catch (PDOException $e) {}
     try { $pdo->exec("CREATE INDEX idx_posts_user_time ON posts(user_id, created_at)"); } catch (PDOException $e) {}
