@@ -985,7 +985,9 @@ try {
             $pdo->prepare("DELETE FROM fcm_tokens WHERE user_id = ? AND token = ?")->execute([$current_session['user_id'], $token]);
             $stmt = $pdo->prepare("INSERT INTO fcm_tokens (user_id, token) VALUES (?, ?)");
             $stmt->execute([$current_session['user_id'], $token]);
-            echo json_encode(['success' => true]);
+            $cntSt = $pdo->prepare("SELECT COUNT(*) FROM fcm_tokens WHERE user_id = ?");
+            $cntSt->execute([$current_session['user_id']]);
+            echo json_encode(['success' => true, 'total' => (int)$cntSt->fetchColumn()]);
             break;
 
         case 'test_fcm':
