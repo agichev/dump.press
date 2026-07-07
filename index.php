@@ -124,6 +124,17 @@ $is_mobile = !$is_dump_app && preg_match('/Android|iPhone|iPad|iPod|webOS|BlackB
     <meta name="keywords" content="<?= htmlspecialchars($seo_keywords, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
     <link rel="canonical" href="<?= htmlspecialchars(rtrim(app_base_url(), '/') . '/' . ltrim($_req, '/'), ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
 
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://unpkg.com">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="preconnect" href="https://i.ibb.co">
+
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/logo.png" as="image">
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/style.min.css?v=8" as="style">
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/script.min.js?v=8" as="script">
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" as="style">
+
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%23000000'/><text x='50' y='55' dominant-baseline='middle' text-anchor='middle' font-size='76' font-family='-apple-system, BlinkMacSystemFont, sans-serif' font-weight='800' fill='%23ffffff'>D</text></svg>">
     <link rel="icon" href="<?= htmlspecialchars($asset_base) ?>/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="<?= htmlspecialchars($asset_base) ?>/logo.png">
@@ -132,14 +143,15 @@ $is_mobile = !$is_dump_app && preg_match('/Android|iPhone|iPad|iPod|webOS|BlackB
     <meta name="msapplication-TileColor" content="#000000">
     <meta name="msapplication-TileImage" content="<?= htmlspecialchars($asset_base) ?>/favicon.ico">
 
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web" defer></script>
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js" defer></script>
 
-    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=8">
+    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.min.css?v=8">
 
     <?php if ($turnstile_enabled): ?>
     <script>
@@ -703,7 +715,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android|iPhone|iPad|iPod|webOS|BlackB
             </form>
         </div>
     </div>
-    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=8"></script>
+    <script src="<?= htmlspecialchars($asset_base) ?>/script.min.js?v=8"></script>
 
     <?php if ($is_mobile): ?>
     <style>
@@ -819,5 +831,10 @@ $is_mobile = !$is_dump_app && preg_match('/Android|iPhone|iPad|iPod|webOS|BlackB
     }
     </script>
     <?php endif; ?>
+    <script>
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register(BASE_PATH + '/sw.js');
+    }
+    </script>
 </body>
 </html>
