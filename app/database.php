@@ -126,10 +126,6 @@ try {
     try { $pdo->exec("CREATE INDEX idx_bookmarks_user_post ON bookmarks(user_id, post_id)"); } catch (PDOException $e) {}
     try { $pdo->exec("CREATE INDEX idx_follows_follower ON follows(follower_id)"); } catch (PDOException $e) {}
 
-    // Инициализация счётчиков для существующих данных
-    $pdo->exec("UPDATE posts p SET p.likes_count = (SELECT COUNT(*) FROM likes WHERE post_id = p.id) WHERE p.likes_count = 0");
-    $pdo->exec("UPDATE posts p SET p.comments_count = (SELECT COUNT(*) FROM comments WHERE post_id = p.id) WHERE p.comments_count = 0");
-
     try { $pdo->exec("ALTER TABLE users ADD COLUMN tfa_enabled TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE users ADD COLUMN tfa_method VARCHAR(20) DEFAULT ''"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE users ADD COLUMN tfa_secret VARCHAR(255) DEFAULT ''"); } catch (PDOException $e) {}

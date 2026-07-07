@@ -1,7 +1,4 @@
 <?php
-// Gzip-сжатие на лету (если не было отключено)
-if (!ob_start('ob_gzhandler')) ob_start();
-
 require __DIR__ . '/config/config.php';
 require __DIR__ . '/app/bootstrap.php';
 
