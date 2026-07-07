@@ -30,10 +30,24 @@
         // Mobile app detection - check for DumpApp in user agent
         const isDumpApp = navigator.userAgent.includes('DumpApp');
 
-async function registerFcmToken() {
-    if (window.AndroidBridge) {
-        const token = window.AndroidBridge.getFcmToken();
-        if (token) {
+        async function registerFcmToken() {
+            if (!window.AndroidBridge) return;
+            for (let i = 0; i < 15; i++) {
+                const token = window.AndroidBridge.getFcmToken();
+                if (token) {
+                    await doRegisterFcmToken(token);
+                    return;
+                }
+                await new Promise(r => setTimeout(r, 1000));
+            }
+        }
+
+        window.registerFcmTokenNow = async function(token) {
+            if (csrfToken) await doRegisterFcmToken(token);
+        };
+
+        async function doRegisterFcmToken(token) {
+            if (!token) return;
             try {
                 await fetch(apiCall('register_fcm_token'), {
                     method: 'POST',
@@ -42,8 +56,6 @@ async function registerFcmToken() {
                 });
             } catch (e) {}
         }
-    }
-}
 
         const GUEST_VIEWED_KEY = 'guest_viewed_posts';
         function getGuestViewed() {
