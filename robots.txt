@@ -6,4 +6,4 @@ Disallow: /register
 Disallow: /settings
 Disallow: /notifications
 
-Sitemap: /index.php?api=sitemap
+Sitemap: /sitemap.xml
