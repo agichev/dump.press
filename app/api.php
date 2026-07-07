@@ -969,6 +969,45 @@ try {
             echo json_encode(['success' => true]);
             break;
 
+        case 'test_fcm':
+            requireAuth();
+            require_once __DIR__ . '/lib/push.php';
+            $testResult = [];
+            $saJson = $GLOBALS['FIREBASE_SERVICE_ACCOUNT'] ?? '';
+            if (!$saJson) {
+                $testResult[] = 'FAIL: FIREBASE_SERVICE_ACCOUNT is empty';
+            } else {
+                $sa = json_decode($saJson, true);
+                if (!$sa) {
+                    $testResult[] = 'FAIL: service account JSON is invalid after base64_decode';
+                } elseif (!isset($sa['project_id'], $sa['client_email'], $sa['private_key'])) {
+                    $testResult[] = 'FAIL: service account missing project_id/client_email/private_key';
+                } else {
+                    $testResult[] = 'OK: service account parsed (project=' . $sa['project_id'] . ', email=' . $sa['client_email'] . ')';
+                    if (!function_exists('curl_init')) {
+                        $testResult[] = 'FAIL: curl extension missing';
+                    } else {
+                        $testResult[] = 'OK: curl available';
+                    }
+                    if (!function_exists('openssl_sign')) {
+                        $testResult[] = 'FAIL: openssl extension missing';
+                    } else {
+                        $testResult[] = 'OK: openssl available';
+                    }
+                    $token = getFcmAccessToken($sa);
+                    if ($token) {
+                        $testResult[] = 'OK: OAuth2 token obtained (' . substr($token, 0, 20) . '...)';
+                    } else {
+                        $testResult[] = 'FAIL: could not obtain OAuth2 token — check error log';
+                    }
+                }
+            }
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM fcm_tokens WHERE user_id = ?");
+            $stmt->execute([$current_session['user_id']]);
+            $testResult[] = 'Tokens registered for you: ' . $stmt->fetchColumn();
+            echo json_encode(['success' => true, 'tests' => $testResult]);
+            break;
+
         /* ---------------- SITEMAP / ROBOTS ---------------- */
         case 'sitemap':
             require_once __DIR__ . '/lib/sitemap.php';
