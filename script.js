@@ -24,8 +24,6 @@
         let tfaSetupTempToken = '';
 
         let pendingAuth = null;
-        let turnstileWidgetId = null;
-        let captchaToken = '';
 
         // Mobile app detection - check for DumpApp in user agent
         const isDumpApp = navigator.userAgent.includes('DumpApp');
@@ -79,41 +77,16 @@
             try { localStorage.setItem(GUEST_VIEWED_KEY, JSON.stringify(arr)); } catch(e) {}
         }
 
-        function openCaptchaModal() {
-            captchaToken = '';
-            document.getElementById('captchaWidget').innerHTML = '';
-            openModal('captchaModal');
-            if (window.__turnstileReady) {
-                renderTurnstile();
-            } else {
-                window.__captchaPending = true;
-            }
-        }
-        function cancelCaptcha() {
-            closeModal('captchaModal');
-            pendingAuth = null;
-            if (turnstileWidgetId !== null) { try { turnstile.remove(turnstileWidgetId); } catch(e) {} turnstileWidgetId = null; }
-        }
-        function renderTurnstile() {
-            if (!window.turnstile || !window.TurnstileSiteKey) return;
-            if (turnstileWidgetId !== null) { try { turnstile.remove(turnstileWidgetId); } catch(e) {} }
-            document.getElementById('captchaWidget').innerHTML = '';
-            turnstileWidgetId = turnstile.render('#captchaWidget', {
-                sitekey: window.TurnstileSiteKey,
-                theme: 'dark',
-                callback: function(token) { captchaToken = token; proceedAfterCaptcha(); },
-                'expired-callback': function() { captchaToken = ''; },
-                'error-callback': function() { captchaToken = ''; showToast('Не удалось загрузить капчу. Обновите страницу.'); }
+        function executeRecaptcha() {
+            return new Promise((resolve) => {
+                if (!window.RecaptchaSiteKey || typeof grecaptcha === 'undefined') {
+                    resolve('');
+                    return;
+                }
+                grecaptcha.ready(() => {
+                    grecaptcha.execute(window.RecaptchaSiteKey, { action: 'auth' }).then(resolve);
+                });
             });
-        }
-        function proceedAfterCaptcha() {
-            if (!captchaToken || !pendingAuth) return;
-            const action = pendingAuth.action;
-            const form = pendingAuth.form;
-            pendingAuth = null;
-            closeModal('captchaModal');
-            if (turnstileWidgetId !== null) { try { turnstile.remove(turnstileWidgetId); } catch(e) {} turnstileWidgetId = null; }
-            doAuth(action, form, captchaToken);
         }
 
         const showToast = (msg) => {
@@ -408,6 +381,9 @@
                 if(nav) nav.classList.remove('show-notif-btn');
                 loadNotifications();
                 updateBottomNav();
+                if (typeof Android !== 'undefined' && Android.requestNotificationPermission) {
+                    Android.requestNotificationPermission();
+                }
             }
             else if (path === '/create' && !isGuest) {
                 if(feedTabs) feedTabs.classList.add('hidden');
@@ -525,8 +501,6 @@
             if (e.key === 'Escape') {
                 const legal = document.getElementById('legalModal');
                 if (legal && legal.classList.contains('open')) { closeLegal(); return; }
-                const captcha = document.getElementById('captchaModal');
-                if (captcha && captcha.classList.contains('open')) { cancelCaptcha(); return; }
                 ['postOptionsModal', 'commentsModal', 'settingsModal', 'cropModal', 'searchModal', 'passwordModal', 'confirmModal', 'textWarningModal', 'tfaSettingsModal', 'tfaLoginModal', 'followingModal'].forEach(id => {
                     const m = document.getElementById(id);
                     if(m && m.classList.contains('open')) closeModal(id);
@@ -541,6 +515,17 @@
                     handlePastePostImages(e);
                 }
             }
+
+            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                const target = e.target;
+                if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+                const wrapper = document.getElementById('feedWrapper');
+                if (!wrapper || !wrapper.children.length) return;
+                const openModal = document.querySelector('.modal-overlay.open, #createView.open');
+                if (openModal) return;
+                e.preventDefault();
+                goToFeedPost(currentFeedIndex + (e.key === 'ArrowRight' ? 1 : -1));
+            }
         });
 
         async function handleAuth(e, action) {
@@ -550,22 +535,17 @@
             if (isProcessing) return;
             await __waitForIp();
 
-            // Капча Cloudflare Turnstile показывается в модалке.
-            if (typeof TURNSTILE_ENABLED !== 'undefined' && TURNSTILE_ENABLED && !isDumpApp) {
-                pendingAuth = { action, form };
-                openCaptchaModal();
-                return;
-            }
-            await doAuth(action, form, '');
+            const token = RECAPTCHA_ENABLED && !isDumpApp ? await executeRecaptcha() : '';
+            await doAuth(action, form, token);
         }
 
-        async function doAuth(action, form, turnstileToken) {
+        async function doAuth(action, form, recaptchaToken) {
             if (isProcessing) return;
             isProcessing = true;
 
             const fd = new FormData(form);
             fd.append('csrf_token', csrfToken || '');
-            if (turnstileToken) fd.append('turnstile_token', turnstileToken);
+            if (recaptchaToken) fd.append('recaptcha_token', recaptchaToken);
             if (window.__clientIp) fd.append('client_ip', window.__clientIp);
 
             const btn = setFormState(form, true);
@@ -916,14 +896,13 @@
             if (window.postSliderRaf) { cancelAnimationFrame(window.postSliderRaf); window.postSliderRaf = null; }
             const activeSlider = wrapper.children[index]?.querySelector('.image-slider');
             if (activeSlider && activeSlider.children.length > 1) {
-                let isSliderPaused = false;
                 const imagesCount = activeSlider.children.length;
                 const dotsContainer = activeSlider.nextElementSibling;
                 const dots = dotsContainer?.querySelectorAll('.slider-dot');
                 const SLIDE_INTERVAL = 2000;
                 
                 if(dots) {
-                    dots.forEach(d => d.classList.remove('active', 'paused'));
+                    dots.forEach(d => d.classList.remove('active'));
                     if(dots[0]) dots[0].classList.add('active');
                 }
                 let currentSlideIndex = 0;
@@ -931,14 +910,12 @@
                 let rafId = null;
 
                 function advanceSlide() {
-                    if (isSliderPaused) return;
-                    
                     currentSlideIndex = (currentSlideIndex + 1) % imagesCount;
                     activeSlider.style.transform = `translateX(-${currentSlideIndex * 100}%) translateZ(0)`;
                     
                     if(dots) {
                         dots.forEach((d, i) => {
-                            d.classList.remove('active', 'paused');
+                            d.classList.remove('active');
                             if (i === currentSlideIndex) { void d.offsetWidth; d.classList.add('active'); }
                         });
                     }
@@ -947,11 +924,6 @@
                 function scheduleNext() {
                     slideTimerStart = performance.now();
                     rafId = requestAnimationFrame(function tick(now) {
-                        if (isSliderPaused) {
-                            slideTimerStart = performance.now();
-                            window.postSliderRaf = requestAnimationFrame(tick);
-                            return;
-                        }
                         if (now - slideTimerStart >= SLIDE_INTERVAL) {
                             advanceSlide();
                             scheduleNext();
@@ -960,23 +932,6 @@
                         window.postSliderRaf = requestAnimationFrame(tick);
                     });
                     window.postSliderRaf = rafId;
-                }
-
-                const setPause = (state) => {
-                    isSliderPaused = state;
-                    const activeDot = dotsContainer?.querySelector('.slider-dot.active');
-                    if (activeDot) {
-                        if (state) activeDot.classList.add('paused');
-                        else activeDot.classList.remove('paused');
-                    }
-                };
-
-                const postWrapper = wrapper.children[index]?.querySelector('.post-wrapper');
-                if (postWrapper) {
-                    postWrapper.addEventListener('pointerdown', () => setPause(true));
-                    postWrapper.addEventListener('pointerup', () => setPause(false));
-                    postWrapper.addEventListener('pointercancel', () => setPause(false));
-                    postWrapper.addEventListener('pointerleave', () => setPause(false));
                 }
 
                 scheduleNext();
@@ -1160,6 +1115,18 @@
         let cropper = null;
         let pendingSettingsAvatarBlob = null;
 
+        function loadCropperJs(callback) {
+            if (typeof Cropper !== 'undefined') { callback(); return; }
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = 'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css';
+            document.head.appendChild(link);
+            const script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js';
+            script.onload = callback;
+            document.head.appendChild(script);
+        }
+
         function initCrop(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -1169,9 +1136,11 @@
             reader.onload = (event) => {
                 document.getElementById('cropImage').src = event.target.result;
                 openModal('cropModal');
-                if (cropper) cropper.destroy();
-                cropper = new Cropper(document.getElementById('cropImage'), {
-                    aspectRatio: 1, viewMode: 1, background: false, autoCropArea: 0.8, responsive: true
+                loadCropperJs(() => {
+                    if (cropper) cropper.destroy();
+                    cropper = new Cropper(document.getElementById('cropImage'), {
+                        aspectRatio: 1, viewMode: 1, background: false, autoCropArea: 0.8, responsive: true
+                    });
                 });
             };
             reader.readAsDataURL(file);
@@ -2194,6 +2163,142 @@
             showConfirm('Удаление', 'Точно удалить этот пост?', () => deletePost(postId, card));
         }
 
+        function doDownloadFromOptions() {
+            const postId = currentOptionsPostId;
+            closeModal('postOptionsModal');
+            const card = document.querySelector(`.post-card[data-id="${postId}"]`);
+            if (!card) return;
+            const wrapper = card.querySelector('.post-wrapper');
+            downloadPostWithWatermark(postId, wrapper);
+        }
+
+        function downloadPostWithWatermark(postId, wrapper) {
+            const slider = wrapper?.querySelector('.image-slider');
+            let imgSrc = null;
+            if (slider && slider.children.length > 0) {
+                const transform = slider.style.transform || '';
+                const m = transform.match(/translateX\(-(\d+)%/);
+                const idx = m ? Math.min(parseInt(m[1]) / 100, slider.children.length - 1) : 0;
+                imgSrc = slider.children[idx]?.src || slider.children[idx]?.getAttribute('src');
+            } else {
+                const img = wrapper?.querySelector('.post-img');
+                if (img) imgSrc = img?.src || img?.getAttribute('src');
+            }
+            if (!imgSrc) {
+                const txt = wrapper?.querySelector('.post-text-content');
+                if (txt) { downloadTextPost(postId, txt); return; }
+                showToast('Не удалось загрузить изображение');
+                return;
+            }
+
+            if (typeof Android !== 'undefined' && Android.downloadImage) {
+                showToast('Скачивание...');
+                Android.downloadImage(imgSrc, `dump_${postId}.jpg`);
+                return;
+            }
+
+            showToast('Подготовка...');
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => addWatermarkAndDownload(img, postId);
+            img.onerror = () => showToast('Ошибка загрузки');
+            img.src = imgSrc;
+        }
+
+        function addWatermarkAndDownload(img, postId) {
+            const wh = 36;
+            const c = document.createElement('canvas');
+            c.width = img.naturalWidth;
+            c.height = img.naturalHeight + wh;
+            const ctx = c.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            ctx.fillStyle = 'rgba(0,0,0,0.75)';
+            ctx.fillRect(0, img.naturalHeight, c.width, wh);
+            ctx.fillStyle = 'rgba(255,255,255,0.7)';
+            ctx.font = `${Math.round(wh * 0.48)}px system-ui,sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('dump.press', c.width / 2, img.naturalHeight + wh / 2);
+            c.toBlob((blob) => {
+                if (!blob) return;
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `dump_${postId}.jpg`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(a.href);
+            }, 'image/jpeg', 0.92);
+        }
+
+        function downloadTextPost(postId, el) {
+            if (typeof Android !== 'undefined' && Android.downloadImage) {
+                showToast('Скачивание текста не поддерживается');
+                return;
+            }
+            showToast('Подготовка...');
+            const w = 800, h = 600;
+            const c = document.createElement('canvas');
+            c.width = w;
+            c.height = h;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0, 0, w, h);
+            ctx.fillStyle = 'rgba(255,255,255,0.92)';
+            const text = el.textContent || '';
+            const fs = text.length < 100 ? 28 : (text.length < 300 ? 20 : 16);
+            ctx.font = `600 ${fs}px system-ui,sans-serif`;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            const pad = 40;
+            const maxW = w - pad * 2;
+            const lines = text.split('\n').filter(l => l.trim());
+            const wrapped = [];
+            for (const line of lines) {
+                let measured = '';
+                for (const ch of line) {
+                    if (ctx.measureText(measured + ch).width > maxW) {
+                        wrapped.push(measured);
+                        measured = ch;
+                    } else {
+                        measured += ch;
+                    }
+                }
+                if (measured) wrapped.push(measured);
+            }
+            const lh = fs * 1.5;
+            const total = wrapped.length * lh;
+            const startY = Math.max(pad, (h - total) / 2);
+            wrapped.forEach((line, i) => ctx.fillText(line, pad, startY + i * lh));
+            const wh = 36;
+            const c2 = document.createElement('canvas');
+            c2.width = w;
+            c2.height = h + wh;
+            const ctx2 = c2.getContext('2d');
+            ctx2.drawImage(c, 0, 0);
+            ctx2.fillStyle = 'rgba(0,0,0,0.75)';
+            ctx2.fillRect(0, h, w, wh);
+            ctx2.fillStyle = 'rgba(255,255,255,0.7)';
+            ctx2.font = `${Math.round(wh * 0.48)}px system-ui,sans-serif`;
+            ctx2.textAlign = 'center';
+            ctx2.textBaseline = 'middle';
+            ctx2.fillText('dump.press', w / 2, h + wh / 2);
+            c2.toBlob((blob) => {
+                if (!blob) return;
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `dump_${postId}.jpg`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(a.href);
+            }, 'image/jpeg', 0.92);
+        }
+
+        function escHtml(s) {
+            return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
         function createPostElement(post) {
             const div = document.createElement('div');
             div.className = 'post-card smooth-fade-in'; div.dataset.id = post.id; div.dataset.slug = post.slug;
@@ -2211,12 +2316,12 @@
                 contentHtml += `<div class="absolute inset-0 bg-surface" style="z-index: 0;"></div>`;
                 
                 if (images.length === 1) {
-                    contentHtml += `<img src="${getProxyUrl(images[0])}" class="post-img relative z-10" style="object-fit: contain; width: 100%; height: 100%; pointer-events: none;" loading="lazy" onload="this.classList.add('loaded')">`;
+                    contentHtml += `<img src="${getProxyUrl(images[0])}" class="post-img relative z-10" style="object-fit: contain; width: 100%; height: 100%; pointer-events: none;" loading="lazy" decoding="async" onload="this.classList.add('loaded')">`;
                 } else {
                     let slidesHtml = '';
                     let dotsHtml = '';
                     images.forEach((img, idx) => {
-                        slidesHtml += `<img src="${getProxyUrl(img)}" class="slider-img" loading="lazy">`;
+                        slidesHtml += `<img src="${getProxyUrl(img)}" class="slider-img" loading="lazy" decoding="async">`;
                         dotsHtml += `<div class="slider-dot"></div>`;
                     });
                     contentHtml += `
@@ -2229,7 +2334,7 @@
                     contentHtml += `<div class="post-overlay-bottom relative z-20 ${isLongText ? 'scrollable-overlay' : ''}">${safeContent}</div>`;
                 }
             } else {
-                let fontSize = post.content.length < 100 ? '2rem' : (post.content.length < 300 ? '1.4rem' : '1.1rem');
+                const fontSize = post.content.length < 100 ? '2rem' : (post.content.length < 300 ? '1.4rem' : '1.1rem');
                 contentHtml = `<div class="post-text-content w-full h-full flex items-center justify-center p-6 text-center relative z-10" style="font-size: ${fontSize}; overflow-y: auto;">${safeContent}</div>`;
             }
 

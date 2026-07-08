@@ -61,22 +61,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array($action, ['login', 'regis
     }
 }
 
+$GLOBALS['__pending_pushes'] = [];
+
+function dispatchPendingPushes(): void {
+    $pushes = $GLOBALS['__pending_pushes'] ?? [];
+    if (empty($pushes)) return;
+    if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+    require_once __DIR__ . '/lib/push.php';
+    foreach ($pushes as $args) {
+        sendFcmPush(...$args);
+    }
+}
+
 try {
     function createNotification($pdo, $user_id, $from_user_id, $type, $post_id = null, $post_slug = null, $allow_self = false) {
         if (!$allow_self && $user_id == $from_user_id) return;
         $stmt = $pdo->prepare("INSERT INTO notifications (user_id, from_user_id, type, post_id, post_slug) VALUES (?, ?, ?, ?, ?)");
         $stmt->execute([$user_id, $from_user_id, $type, $post_id, $post_slug]);
-        require_once __DIR__ . '/lib/push.php';
-        sendFcmPush($pdo, $user_id, $from_user_id, $type, $post_id, $post_slug);
+        $GLOBALS['__pending_pushes'][] = [$pdo, $user_id, $from_user_id, $type, $post_id, $post_slug];
     }
 
     switch ($action) {
 
         /* ---------------- АУТЕНТИФИКАЦИЯ ---------------- */
         case 'register': {
-            // Капча Cloudflare Turnstile (в модалке на клиенте).
+            // Капча Google reCAPTCHA v3 (невидимая, выполняется на клиенте).
             $is_dump_app_api = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
-            if (!$is_dump_app_api && !verifyTurnstile(trim($_POST['turnstile_token'] ?? ''), getClientIp())) {
+            if (!$is_dump_app_api && !verifyRecaptcha(trim($_POST['recaptcha_token'] ?? ''))) {
                 throw new Exception('Проверка капчи не пройдена. Обновите страницу.');
             }
             $email = filter_var(trim($_POST['email'] ?? ''), FILTER_VALIDATE_EMAIL);
@@ -99,7 +110,7 @@ try {
 
         case 'login': {
             $is_dump_app_api = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
-            if (!$is_dump_app_api && !verifyTurnstile(trim($_POST['turnstile_token'] ?? ''), getClientIp())) {
+            if (!$is_dump_app_api && !verifyRecaptcha(trim($_POST['recaptcha_token'] ?? ''))) {
                 throw new Exception('Проверка капчи не пройдена. Обновите страницу.');
             }
             $email = filter_var(trim($_POST['email'] ?? ''), FILTER_VALIDATE_EMAIL);
@@ -630,10 +641,21 @@ try {
 
             if (empty($content) && empty($image_url)) throw new Exception('Пост пуст');
 
+            $uid = (int)$current_session['user_id'];
+
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM posts WHERE user_id = ? AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)");
+            $stmt->execute([$uid]);
+            if ((int)$stmt->fetchColumn() >= 45) throw new Exception('Слишком много постов. Попробуйте позже.');
+
+            $stmt = $pdo->prepare("SELECT MAX(created_at) FROM posts WHERE user_id = ?");
+            $stmt->execute([$uid]);
+            $last = $stmt->fetchColumn();
+            if ($last && time() - strtotime($last) < 15) throw new Exception('Слишком часто. Подождите немного.');
+
             $slug = bin2hex(random_bytes(5));
 
             $stmt = $pdo->prepare("INSERT INTO posts (user_id, content, image_url, slug) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$current_session['user_id'], $content, $image_url, $slug]);
+            $stmt->execute([$uid, $content, $image_url, $slug]);
             $new_post_id = (int)$pdo->lastInsertId();
             $stmt_followers = $pdo->prepare("SELECT follower_id FROM follows WHERE following_id = ?");
             $stmt_followers->execute([$current_session['user_id']]);
@@ -1007,4 +1029,5 @@ try {
     error_log("FATAL: " . $e->getMessage());
     echo json_encode(['success' => false, 'error' => 'Внутренняя ошибка сервера']);
 }
+dispatchPendingPushes();
 exit;

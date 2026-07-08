@@ -28,9 +28,9 @@ if (isset($_GET['api'])) {
 
 $path_parts = explode('/', $_req);
 
-$turnstile_site_key   = $GLOBALS['TURNSTILE_SITE_KEY'] ?? '';
-$turnstile_secret_key = $GLOBALS['TURNSTILE_SECRET_KEY'] ?? '';
-$turnstile_enabled    = $turnstile_site_key !== '' && $turnstile_secret_key !== '';
+$recaptcha_site_key   = $GLOBALS['RECAPTCHA_V3_SITE_KEY'] ?? '';
+$recaptcha_secret_key = $GLOBALS['RECAPTCHA_V3_SECRET_KEY'] ?? '';
+$recaptcha_enabled    = $recaptcha_site_key !== '' && $recaptcha_secret_key !== '';
 
 $random_titles = ["Dump", "Настоящий Dump"];
 $seo_title = $random_titles[array_rand($random_titles)];
@@ -124,6 +124,14 @@ $is_mobile = !$is_dump_app && preg_match('/Android|iPhone|iPad|iPod|webOS|BlackB
     <meta name="keywords" content="<?= htmlspecialchars($seo_keywords, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
     <link rel="canonical" href="<?= htmlspecialchars(rtrim(app_base_url(), '/') . '/' . ltrim($_req, '/'), ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
 
+    <link rel="preconnect" href="https://unpkg.com">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="preconnect" href="https://www.google.com">
+    <link rel="preconnect" href="https://www.clarity.ms">
+    <link rel="preconnect" href="https://i.ibb.co">
+    <link rel="dns-prefetch" href="https://i.ibb.co">
+    <link rel="dns-prefetch" href="https://ui-avatars.com">
+
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%23000000'/><text x='50' y='55' dominant-baseline='middle' text-anchor='middle' font-size='76' font-family='-apple-system, BlinkMacSystemFont, sans-serif' font-weight='800' fill='%23ffffff'>D</text></svg>">
     <link rel="icon" href="<?= htmlspecialchars($asset_base) ?>/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="<?= htmlspecialchars($asset_base) ?>/logo.png">
@@ -134,26 +142,14 @@ $is_mobile = !$is_dump_app && preg_match('/Android|iPhone|iPad|iPod|webOS|BlackB
 
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=8" as="style">
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/script.js?v=8" as="script">
     <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=8">
 
-    <?php if ($turnstile_enabled): ?>
-    <script>
-        window.__turnstileReady = false;
-        window.__captchaPending = false;
-        window.turnstileOnLoad = function() {
-            window.__turnstileReady = true;
-            if (window.__captchaPending && typeof renderTurnstile === 'function') {
-                window.__captchaPending = false;
-                renderTurnstile();
-            }
-        };
-    </script>
-    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=turnstileOnLoad&render=explicit" async defer></script>
+    <?php if ($recaptcha_enabled): ?>
+    <style>.grecaptcha-badge{visibility:hidden!important;opacity:0!important}</style>
+    <script src="https://www.google.com/recaptcha/api.js?render=<?= htmlspecialchars($recaptcha_site_key, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>" async defer></script>
     <?php endif; ?>
     <?php if ($seo_jsonld): ?>
     <?= $seo_jsonld ?>
@@ -161,13 +157,6 @@ $is_mobile = !$is_dump_app && preg_match('/Android|iPhone|iPad|iPod|webOS|BlackB
     <?php if ($is_dump_app): ?>
     <style>.bottom-nav{display:flex!important}#mainNav .icon-btn{display:none!important}#navBackBtn{display:flex!important}#mainNav.show-notif-btn #navNotifBtn{display:flex!important}.post-wrapper{max-width:100%!important;width:100%!important;border-radius:0!important}body{padding-bottom:56px!important}</style>
     <?php endif; ?>
-    <script type="text/javascript">
-        (function(c,l,a,r,i,t,y){
-            c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
-            t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
-            y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
-        })(window, document, "clarity", "script", "xj975d6qmr");
-    </script>
 </head>
 <body>
     <script>
@@ -175,8 +164,8 @@ $is_mobile = !$is_dump_app && preg_match('/Android|iPhone|iPad|iPod|webOS|BlackB
         const apiCall = (action) => BASE_PATH + '/index.php?api=' + action;
         const MAX_FILE_SIZE = 20 * 1024 * 1024;
 
-        const TURNSTILE_ENABLED = <?php echo $turnstile_enabled ? 'true' : 'false'; ?>;
-        window.TurnstileSiteKey = '<?php echo htmlspecialchars($turnstile_site_key, ENT_QUOTES | ENT_HTML5, 'UTF-8'); ?>';
+        const RECAPTCHA_ENABLED = <?php echo $recaptcha_enabled ? 'true' : 'false'; ?>;
+        window.RecaptchaSiteKey = '<?php echo htmlspecialchars($recaptcha_site_key, ENT_QUOTES | ENT_HTML5, 'UTF-8'); ?>';
 
         const getProxyUrl = (url) => {
             if (!url) return '';
@@ -326,6 +315,9 @@ $is_mobile = !$is_dump_app && preg_match('/Android|iPhone|iPad|iPod|webOS|BlackB
                 </button>
                 <button class="vc-btn-outline flex items-center justify-start gap-3" style="border:none; background:var(--surface-elevated); padding: 18px 24px;" onclick="doShareFromOptions()">
                     <i class="ph ph-share-network" style="font-size:1.5rem;"></i> <span style="font-size:1.05rem;">Поделиться</span>
+                </button>
+                <button class="vc-btn-outline flex items-center justify-start gap-3" style="border:none; background:var(--surface-elevated); padding: 18px 24px;" onclick="doDownloadFromOptions()">
+                    <i class="ph ph-download-simple" style="font-size:1.5rem;"></i> <span style="font-size:1.05rem;">Скачать</span>
                 </button>
                 <button id="poDeleteBtn" class="vc-btn-outline flex items-center justify-start gap-3 hidden" style="border:none; background:rgba(255,42,95,0.1); color:var(--error); padding: 18px 24px; margin-top: 10px;" onclick="doDeleteFromOptions()">
                     <i class="ph ph-trash" style="font-size:1.5rem;"></i> <span style="font-size:1.05rem;">Удалить пост</span>
@@ -565,16 +557,6 @@ $is_mobile = !$is_dump_app && preg_match('/Android|iPhone|iPad|iPod|webOS|BlackB
         </div>
     </div>
 
-    <div id="captchaModal" class="modal-overlay" style="z-index: 300;" onclick="if(event.target.id==='captchaModal') cancelCaptcha()">
-        <div class="modal-content text-center" style="max-width: 400px;">
-            <div class="flex justify-between items-center mb-2">
-                <h3 class="font-bold" style="font-size:1.2rem;">Подтвердите, что вы человек</h3>
-                <button type="button" onclick="cancelCaptcha()" style="color:var(--text-muted);"><i class="ph ph-x" style="font-size:1.4rem;"></i></button>
-            </div>
-            <p class="text-muted text-sm mb-6">Так мы защищаем Dump от ботов и спама.</p>
-            <div id="captchaWidget" class="flex justify-center items-center mb-4" style="min-height: 70px;"></div>
-        </div>
-    </div>
 
     <div id="legalModal" class="modal-overlay" onclick="if(event.target.id==='legalModal') closeLegal()">
         <div class="modal-content" style="max-width: 680px; max-height: 90vh; display:flex; flex-direction:column;">
@@ -826,5 +808,12 @@ $is_mobile = !$is_dump_app && preg_match('/Android|iPhone|iPad|iPod|webOS|BlackB
     }
     </script>
     <?php endif; ?>
+    <script>
+        (function(c,l,a,r,i,t,y){
+            c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+            t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+            y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+        })(window, document, "clarity", "script", "xj975d6qmr");
+    </script>
 </body>
 </html>

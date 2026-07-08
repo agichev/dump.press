@@ -333,7 +333,7 @@
         .legal-consent .legal-link:hover { color: white; }
         .auth-footer-links { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--surface-hover); }
 
-        #captchaWidget iframe { border: 0; border-radius: var(--radius-md); overflow: hidden; }
+        .grecaptcha-badge { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }
 
         .profile-bio { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
         .profile-bio br { flex-basis: 100%; height: 0; }
