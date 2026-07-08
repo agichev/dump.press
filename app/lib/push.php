@@ -16,14 +16,14 @@ function sendFcmPush($pdo, $userId, $fromUserId, $type, $postId, $postSlug): voi
         $username = $stmt->fetchColumn() ?: '';
     }
 
-    $body = match ($type) {
-        'like'     => "$username поставил(а) лайк на ваш пост",
-        'comment'  => "$username написал(а) комментарий к вашему посту",
-        'follow'   => "$username подписался(-ась) на вас",
-        'new_post' => "$username опубликовал(а) новый пост",
-        'login'    => "Выполнен вход в ваш аккаунт",
-        default    => 'Новое уведомление',
-    };
+    $body = 'Новое уведомление';
+    switch ($type) {
+        case 'like':     $body = "$username поставил(а) лайк на ваш пост"; break;
+        case 'comment':  $body = "$username написал(а) комментарий к вашему посту"; break;
+        case 'follow':   $body = "$username подписался(-ась) на вас"; break;
+        case 'new_post': $body = "$username опубликовал(а) новый пост"; break;
+        case 'login':    $body = "Выполнен вход в ваш аккаунт"; break;
+    }
 
     $stmt = $pdo->prepare("SELECT token FROM fcm_tokens WHERE user_id = ?");
     $stmt->execute([$userId]);
