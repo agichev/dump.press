@@ -3,6 +3,20 @@ declare(strict_types=1);
 
 $action = $_GET['api'] ?? '';
 
+function checkRateLimit(string $key, int $max, int $windowSec): bool {
+    $dir = sys_get_temp_dir() . '/dump_rl';
+    if (!is_dir($dir)) @mkdir($dir, 0700, true);
+    $file = "$dir/" . md5($key) . '.rl';
+    $now = time();
+    $data = @file_get_contents($file);
+    $log = $data ? json_decode($data, true) : [];
+    $log = array_filter($log, fn($t) => $t > $now - $windowSec);
+    if (count($log) >= $max) return false;
+    $log[] = $now;
+    @file_put_contents($file, json_encode($log));
+    return true;
+}
+
 /* ----------------------------------------------------------------------
  |  Медиа-прокси (отдаётся раньше JSON-блока)
  | --------------------------------------------------------------------- */
@@ -11,12 +25,13 @@ if ($action === 'proxy') {
     $parsed = parse_url($url);
     $is_allowed_host = false;
     if (isset($parsed['host'])) {
-        $allowed_domains = ['ibb.co', 'i.ibb.co', 'imgbb.com', 'i.imgbb.com', 'ui-avatars.com', 'www.google.com'];
+        $allowed_domains = ['ibb.co', 'i.ibb.co', 'imgbb.com', 'i.imgbb.com', 'ui-avatars.com'];
         if (in_array(strtolower($parsed['host']), $allowed_domains, true)) {
             $is_allowed_host = true;
         }
     }
     if ($is_allowed_host && filter_var($url, FILTER_VALIDATE_URL) && preg_match('/^https?:\/\//i', $url)) {
+        if (isset($parsed['port']) && !in_array((int)$parsed['port'], [80, 443], true)) { $is_allowed_host = false; }
         $context = stream_context_create(['http' => [
             'method' => 'GET', 'header' => "User-Agent: Dump/6.6\r\n", 'timeout' => 5, 'follow_location' => 0, 'ignore_errors' => true
         ]]);
@@ -85,9 +100,10 @@ try {
 
         /* ---------------- АУТЕНТИФИКАЦИЯ ---------------- */
         case 'register': {
-            // Капча Google reCAPTCHA v3 (невидимая, выполняется на клиенте).
-            $is_dump_app_api = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
-            if (!$is_dump_app_api && !verifyRecaptcha(trim($_POST['recaptcha_token'] ?? ''))) {
+            if (!checkRateLimit('reg_' . getClientIp(), 3, 3600)) {
+                throw new Exception('Слишком много попыток регистрации. Попробуйте позже.');
+            }
+            if (!verifyRecaptcha(trim($_POST['recaptcha_token'] ?? ''))) {
                 throw new Exception('Проверка капчи не пройдена. Обновите страницу.');
             }
             $email = filter_var(trim($_POST['email'] ?? ''), FILTER_VALIDATE_EMAIL);
@@ -96,7 +112,7 @@ try {
 
             $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
             $stmt->execute([$email]);
-            if ($stmt->fetch()) throw new Exception('Пользователь с таким email уже существует.');
+            if ($stmt->fetch()) throw new Exception('Регистрация временно недоступна. Попробуйте позже.');
 
             $username = 'dump_' . bin2hex(random_bytes(4));
             $hash = password_hash($password, PASSWORD_DEFAULT);
@@ -109,8 +125,10 @@ try {
         }
 
         case 'login': {
-            $is_dump_app_api = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
-            if (!$is_dump_app_api && !verifyRecaptcha(trim($_POST['recaptcha_token'] ?? ''))) {
+            if (!checkRateLimit('login_' . getClientIp(), 10, 60)) {
+                throw new Exception('Слишком много попыток входа. Попробуйте через минуту.');
+            }
+            if (!verifyRecaptcha(trim($_POST['recaptcha_token'] ?? ''))) {
                 throw new Exception('Проверка капчи не пройдена. Обновите страницу.');
             }
             $email = filter_var(trim($_POST['email'] ?? ''), FILTER_VALIDATE_EMAIL);
@@ -597,6 +615,9 @@ try {
         /* ---------------- МЕДИА ---------------- */
         case 'upload_image':
             requireAuth();
+            if (!checkRateLimit('upload_' . $current_session['user_id'], 20, 3600)) {
+                throw new Exception('Слишком много загрузок. Попробуйте позже.');
+            }
             if (!isset($_FILES['image']) || $_FILES['image']['error'] !== UPLOAD_ERR_OK) {
                 throw new Exception('Ошибка загрузки файла.');
             }
@@ -605,6 +626,7 @@ try {
 
             $mime = mime_content_type($file['tmp_name']);
             if (strpos($mime, 'image/') !== 0) throw new Exception('Недопустимый формат файла.');
+            if ($mime === 'image/svg+xml') throw new Exception('SVG не поддерживается.');
 
             $apiKey = $GLOBALS['IMGBB_API_KEY'] ?? '';
             $ch = curl_init();
@@ -736,6 +758,9 @@ try {
 
         case 'add_comment':
             requireAuth();
+            if (!checkRateLimit('comment_' . $current_session['user_id'], 10, 60)) {
+                throw new Exception('Слишком много комментариев. Подождите минуту.');
+            }
             $post_id = (int)($_POST['post_id'] ?? 0);
             $parent_id = !empty($_POST['parent_id']) ? (int)$_POST['parent_id'] : null;
             $content = trim($_POST['content'] ?? '');
@@ -1024,7 +1049,8 @@ try {
     error_log("DB_ERROR: " . $e->getMessage());
     echo json_encode(['success' => false, 'error' => 'Внутренняя ошибка базы данных']);
 } catch (Exception $e) {
-    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    error_log("API_ERROR: " . $e->getMessage());
+    echo json_encode(['success' => false, 'error' => 'Произошла ошибка. Попробуйте позже.']);
 } catch (Throwable $e) {
     error_log("FATAL: " . $e->getMessage());
     echo json_encode(['success' => false, 'error' => 'Внутренняя ошибка сервера']);

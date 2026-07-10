@@ -175,8 +175,11 @@
         };
 
         const linkify = (text) => {
-            const urlRegex = /(https?:\/\/[^\s]+)/g;
-            let safeText = text.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color: #60a5fa; text-decoration: underline; word-break: break-word;" onclick="event.stopPropagation()">$1</a>');
+            const urlRegex = /(https?:\/\/[^\s<>"']+)/g;
+            let safeText = text.replace(urlRegex, (url) => {
+                const h = url.replace(/&quot;/g, '%22').replace(/</g, '%3C').replace(/>/g, '%3E');
+                return '<a href="' + h + '" target="_blank" rel="noopener noreferrer" style="color: #60a5fa; text-decoration: underline; word-break: break-word;" onclick="event.stopPropagation()">' + url + '</a>';
+            });
             
             const hashRegex = /(^|\s)(#[a-zA-Zа-яА-ЯёЁ0-9_]+)/g;
             safeText = safeText.replace(hashRegex, '$1<span class="hashtag" onclick="event.stopPropagation(); triggerHashtagSearch(\'$2\')">$2</span>');
@@ -239,12 +242,16 @@
             });
         };
 
+        let _notifCount = 0;
+
         const updateSeoTitleDynamic = (authorName = null) => {
+            let t;
             if (authorName) {
-                document.title = `Публикация от @${authorName} | Dump`;
+                t = `Публикация от @${authorName} | Dump`;
             } else {
-                document.title = Math.random() > 0.5 ? "Dump" : "Настоящий Dump";
+                t = Math.random() > 0.5 ? "Dump" : "Настоящий Dump";
             }
+            document.title = _notifCount > 0 ? `(${_notifCount > 9 ? '9+' : _notifCount}) ${t}` : t;
         };
 
         const navigate = (path, replace = false) => {
@@ -472,18 +479,18 @@
         window.openLegal = openLegal;
         window.closeLegal = closeLegal;
 
-        // Рендер описания профиля: ссылки превращаются в кликабельные «таблетки» с фавиконкой.
         function formatBio(bio) {
             if (!bio) return '';
             const urlRegex = /(https?:\/\/[^\s<>"']+)/g;
             let html = bio;
             html = html.replace(urlRegex, (url) => {
+                const safeUrl = url.replace(/&quot;/g, '%22').replace(/</g, '%3C').replace(/>/g, '%3E');
                 let host;
-                try { host = new URL(url).hostname.replace(/^www\./, ''); } catch(e) { host = url; }
+                try { host = new URL(url.replace(/&amp;/g, '&')).hostname.replace(/^www\./, ''); } catch(e) { host = url.replace(/&quot;/g, '').replace(/</g, '').replace(/>/g, ''); }
                 const fav = 'https://www.google.com/s2/favicons?domain=' + encodeURIComponent(host) + '&sz=64';
-                return '<a class="bio-link-pill" href="' + url + '" target="_blank" rel="noopener noreferrer nofollow" onclick="event.stopPropagation()">' +
+                return '<a class="bio-link-pill" href="' + safeUrl + '" target="_blank" rel="noopener noreferrer nofollow" onclick="event.stopPropagation()">' +
                     '<img class="bio-link-favicon" src="' + fav + '" alt="" onerror="this.style.visibility=\'hidden\'">' +
-                    '<span class="bio-link-text">' + host + '</span></a>';
+                    '<span class="bio-link-text">' + host.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span></a>';
             });
             html = html.replace(/\n/g, '<br>');
             return html;
@@ -965,6 +972,7 @@
                 }
                 
                 initPostCarousel(currentFeedIndex);
+                preloadFeedImages(currentFeedIndex);
                 
                 const postAuthor = wrapper.children[currentFeedIndex]?.querySelector('.author-name')?.textContent;
                 updateSeoTitleDynamic(postAuthor);
@@ -973,6 +981,24 @@
                     window.history.replaceState(history.state, '', BASE_PATH + `/post/${newPostSlug}`);
                 }
             }, 420);
+        }
+
+        function preloadFeedImages(index) {
+            const wrapper = document.getElementById('feedWrapper');
+            if (!wrapper) return;
+            const total = wrapper.children.length;
+            for (let i = index + 1; i < total - 1; i++) {
+                const card = wrapper.children[i];
+                if (!card) continue;
+                const imgs = card.querySelectorAll('img[src]');
+                imgs.forEach(img => {
+                    const src = img.getAttribute('src');
+                    if (src && !src.startsWith('data:')) {
+                        const p = new Image();
+                        p.src = src;
+                    }
+                });
+            }
         }
 
         async function updateDynamicIp() {
@@ -1782,6 +1808,9 @@
         function updateNotifBadge(count) {
             const badge = document.getElementById('notifBadge');
             const profileIcon = document.querySelector('[data-nav="profile"] i');
+            _notifCount = count;
+            const t = document.title.replace(/^\(\d+\+?\)\s*/, '');
+            document.title = count > 0 ? `(${count > 9 ? '9+' : count}) ${t}` : t;
             if (count > 0) {
                 if (badge) { badge.textContent = count > 99 ? '99+' : count; badge.classList.remove('hidden'); }
                 if (profileIcon) profileIcon.classList.add('notif-pulse');
@@ -1791,6 +1820,20 @@
             }
         }
 
+        function playNotifSound() {
+            if (isDumpApp) return;
+            try {
+                var a = document.getElementById('notifAudio');
+                if (!a) return;
+                a.currentTime = 0;
+                a.play();
+            } catch(e) {
+                console.error('playNotifSound:', e);
+            }
+        }
+
+        let _prevUnread = -1;
+
         async function pollUnreadCount() {
             if (!currentUser) return;
             try {
@@ -1798,6 +1841,10 @@
                 const data = await res.json();
                 if (data.success) {
                     updateNotifBadge(data.unread_count);
+                    if (_prevUnread >= 0 && data.unread_count > _prevUnread) {
+                        playNotifSound();
+                    }
+                    _prevUnread = data.unread_count;
                     if (data.new_notifications && data.new_notifications.length > 0) {
                         data.new_notifications.forEach(n => {
                             const text = getNotifText(n.type, n.from_username || 'Кто-то').replace(/<[^>]*>/g, '');
@@ -2077,6 +2124,7 @@
                 }
                 
                 initPostCarousel(currentFeedIndex);
+                preloadFeedImages(currentFeedIndex);
 
             } catch(e) { 
                 console.error(e);

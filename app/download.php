@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 $base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
 $base_url = app_base_url();
-$apk_url = 'https://github.com/agichev/dump.mobile/releases/download/1.1/dump.apk';
+$apk_url = 'https://github.com/agichev/dump.mobile/releases/download/1.2/dump.apk';
 ?>
 <!DOCTYPE html>
 <html lang="ru">
@@ -11,13 +11,14 @@ $apk_url = 'https://github.com/agichev/dump.mobile/releases/download/1.1/dump.ap
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dump — Мобильное приложение</title>
-    <meta name="description" content="Скачайте мобильное приложение Dump и оставайтесь на связи с сообществом. Делитесь фотографиями, мыслями и находите крутой контент.">
-    <meta name="keywords" content="Dump, мобильное приложение, скачать, Android, APK, социальная сеть, фото, контент">
+    <meta name="description" content="Мобильное приложение Dump — социальная сеть для фотографий и общения. Скачайте APK для Android и присоединяйтесь к сообществу.">
+    <meta name="keywords" content="Dump, мобильное приложение, социальная сеть, скачать, Android, APK, dump соцсеть, дамп, dump.press, фото, общение">
     <meta property="og:title" content="Dump — Мобильное приложение">
-    <meta property="og:description" content="Скачайте мобильное приложение Dump и оставайтесь на связи с сообществом.">
+    <meta property="og:description" content="Скачайте мобильное приложение Dump и оставайтесь на связи с сообществом. Социальная сеть для фото и общения.">
     <meta property="og:image" content="<?= $base_url ?>/watchindump.png">
     <meta property="og:type" content="website">
     <meta property="og:locale" content="ru_RU">
+    <?= buildJsonLd('download', ['apk_url' => $apk_url]) ?>
     <meta property="og:site_name" content="Dump">
     <meta property="og:url" content="<?= $base_url ?>/download">
     <meta name="twitter:card" content="summary_large_image">

@@ -34,9 +34,9 @@ $recaptcha_enabled    = $recaptcha_site_key !== '' && $recaptcha_secret_key !== 
 
 $random_titles = ["Dump", "Настоящий Dump"];
 $seo_title = $random_titles[array_rand($random_titles)];
-$seo_desc = "Dump — это место, где ты можешь делиться фотографиями, мыслями и находить крутой контент от других людей.";
+$seo_desc = "Dump — социальная сеть, где можно делиться фотографиями, мыслями и находить интересный контент. Присоединяйтесь к сообществу Dump.";
 $seo_image = '';
-$seo_keywords = 'Dump, социальная сеть, фото, контент, общение, дамп';
+$seo_keywords = 'Dump, социальная сеть, dump соцсеть, социальная сеть дамп, дамп, dump.press, фото, контент, общение, социальная платформа';
 $seo_jsonld = '';
 $legal_prerender = ['slug' => '', 'title' => '', 'html' => ''];
 $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
@@ -102,7 +102,7 @@ $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
 
 $is_dump_app = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
 $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
-$is_mobile = !$is_dump_app && preg_match('/Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i', $ua);
+$is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i', $ua);
 ?>
 <!DOCTYPE html>
 <html lang="ru">
@@ -815,5 +815,6 @@ $is_mobile = !$is_dump_app && preg_match('/Android|iPhone|iPad|iPod|webOS|BlackB
             y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
         })(window, document, "clarity", "script", "xj975d6qmr");
     </script>
+    <audio id="notifAudio" preload="auto" src="/notification.wav" volume="0.5"></audio>
 </body>
 </html>

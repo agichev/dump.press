@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 function generateSeoKeywords(string $content): string {
-    $base = ['dump', 'dump.press', 'социальная сеть', 'фото', 'контент'];
+    $base = ['dump', 'dump.press', 'социальная сеть', 'dump соцсеть', 'социальная сеть дамп', 'дамп', 'фото', 'контент', 'социальная платформа', 'dumpsocial'];
 
     preg_match_all('/[А-Яа-яЁёA-Za-z]{3,}/u', $content, $matches);
     $words = !empty($matches[0]) ? array_unique(array_map('mb_strtolower', $matches[0])) : [];
@@ -106,9 +106,22 @@ function buildJsonLd(string $type, array $data = []): string {
                 ],
             ];
             break;
+        case 'download':
+            $json = [
+                '@context' => 'https://schema.org',
+                '@type' => 'SoftwareApplication',
+                'name' => 'Dump',
+                'applicationCategory' => 'SocialNetworkingApplication',
+                'operatingSystem' => 'Android',
+                'description' => 'Мобильное приложение социальной сети Dump. Делитесь фотографиями, мыслями и находите контент.',
+                'url' => $base . '/download',
+                'downloadUrl' => $data['apk_url'] ?? '',
+                'offers' => ['@type' => 'Offer', 'price' => '0', 'priceCurrency' => 'USD'],
+            ];
+            break;
         default:
             return '';
     }
 
-    return '<script type="application/ld+json">' . json_encode($json, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . '</script>';
+    return '<script type="application/ld+json">' . json_encode($json, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . '</script>';
 }

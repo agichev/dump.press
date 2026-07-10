@@ -2,14 +2,6 @@
 declare(strict_types=1);
 
 function getClientIp(): string {
-    // Приоритет: IP, отправленный клиентом через JS (api.ipify.org)
-    $clientIp = $_POST['client_ip'] ?? '';
-    if ($clientIp !== '' && filter_var($clientIp, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-        if (filter_var($clientIp, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-            return $clientIp;
-        }
-    }
-
     $candidates = [];
 
     $cf = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? '';
