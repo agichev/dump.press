@@ -11,6 +11,9 @@
 vps_key
 vps_key.pub
 
+# Заметки по VPS / деплою
+VPS.md
+
 # Временные файлы / IDE
 *.log
 *.cache

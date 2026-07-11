@@ -6,7 +6,7 @@ if (!headers_sent()) {
     header("X-Content-Type-Options: nosniff");
     header("Referrer-Policy: strict-origin-when-cross-origin");
     header("Permissions-Policy: geolocation=(), microphone=(), camera=()");
-    header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; img-src 'self' data: blob: https: http:; connect-src 'self' https: wss:; frame-src 'self' https://www.google.com https://recaptcha.google.com; frame-ancestors 'none'; form-action 'self';");
+    header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; img-src 'self' data: blob: https: http:; connect-src 'self' https: wss:; frame-src 'self' https://www.google.com https://recaptcha.google.com https://www.clarity.ms; frame-ancestors 'none'; form-action 'self';");
 }
 
 if (!function_exists('load_env')) {
