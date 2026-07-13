@@ -175,17 +175,18 @@
         };
 
         const linkify = (text) => {
-            const urlRegex = /(https?:\/\/[^\s<>"']+)/g;
-            let safeText = text.replace(urlRegex, (url) => {
-                const h = url.replace(/&quot;/g, '%22').replace(/</g, '%3C').replace(/>/g, '%3E');
-                return '<a href="' + h + '" target="_blank" rel="noopener noreferrer" style="color: #60a5fa; text-decoration: underline; word-break: break-word;" onclick="event.stopPropagation()">' + url + '</a>';
-            });
-            
             const hashRegex = /(^|\s)(#[a-zA-Zа-яА-ЯёЁ0-9_]+)/g;
-            safeText = safeText.replace(hashRegex, '$1<span class="hashtag" onclick="event.stopPropagation(); triggerHashtagSearch(\'$2\')">$2</span>');
+            let safeText = text.replace(hashRegex, '$1<span class="hashtag" onclick="event.stopPropagation(); triggerHashtagSearch(\'$2\')">$2</span>');
 
-            const mentionRegex = /(^|\s)(@[a-zA-Zа-яА-ЯёЁ0-9_]+)/g;
+            const mentionRegex = /(^|\s)(@(?:[^\s<>"'(){}[\]|\\^,.!?;:\-]+(?:\s[^\s<>"'(){}[\]|\\^,.!?;:\-]+)*))/g;
             safeText = safeText.replace(mentionRegex, '$1<span class="mention" onclick="event.stopPropagation(); triggerMentionProfile(\'$2\')">$2</span>');
+
+            const urlRegex = /(https?:\/\/[^\s<>"']+)/g;
+            safeText = safeText.replace(urlRegex, (url) => {
+                const h = url.replace(/&quot;/g, '%22').replace(/</g, '%3C').replace(/>/g, '%3E');
+                return '<a href="' + h + '" target="_blank" rel="noopener noreferrer" style="color: #ffffff; text-decoration: underline; word-break: break-word;" onclick="event.stopPropagation()">' + url + '</a>';
+            });
+
             return safeText;
         };
 
@@ -215,9 +216,10 @@
         };
 
         const timeAgo = (dateStr) => {
-            const date = new Date((dateStr + ' UTC').replace(/-/g, '/'));
+            const date = new Date(dateStr.replace(' ', 'T') + 'Z');
             const seconds = Math.floor((new Date() - date) / 1000);
-            if (seconds < 60) return "Только что";
+            if (seconds < 5) return "Только что";
+            if (seconds < 60) return `${seconds} ${getPlural(seconds, 'сек.', 'сек.', 'сек.')} назад`;
             let i = Math.floor(seconds / 31536000); if (i >= 1) return `${i} ${getPlural(i, 'год', 'года', 'лет')} назад`;
             i = Math.floor(seconds / 2592000); if (i >= 1) return `${i} ${getPlural(i, 'мес.', 'мес.', 'мес.')} назад`;
             i = Math.floor(seconds / 86400); if (i >= 1) return `${i} ${getPlural(i, 'день', 'дня', 'дней')} назад`;
@@ -1482,7 +1484,7 @@
                     actionBtnHTML = `<button onclick="toggleFollow(${p.id}, this)" class="vc-btn ${isFollowed ? 'vc-btn-outline' : ''}" style="padding: 8px 24px; width:auto; border-radius:99px; font-size:0.9rem;">${isFollowed ? 'Вы подписаны' : 'Подписаться'}</button>`;
                 }
 
-                const joinDate = new Date((p.created_at + ' UTC').replace(/-/g, '/'));
+                const joinDate = new Date(p.created_at.replace(' ', 'T') + 'Z');
                 const months = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
                 const joinStr = `В Dump с ${months[joinDate.getMonth()]} ${joinDate.getFullYear()}`;
 
@@ -1595,6 +1597,7 @@
                 case 'follow': return `<b>${username}</b> подписался(-ась) на вас`;
                 case 'new_post': return `<b>${username}</b> опубликовал(а) новый пост`;
                 case 'login': return `Выполнен вход в ваш аккаунт`;
+                case 'mention': return `<b>${username}</b> упомянул(а) вас в публикации`;
                 default: return 'Новое уведомление';
             }
         }
@@ -1606,6 +1609,7 @@
                 case 'follow': return 'ph ph-user-plus';
                 case 'new_post': return 'ph ph-article';
                 case 'login': return 'ph ph-sign-in';
+                case 'mention': return 'ph ph-at';
                 default: return 'ph ph-bell';
             }
         }
@@ -1617,6 +1621,7 @@
                 case 'follow': return '#34d399';
                 case 'new_post': return '#f5a623';
                 case 'login': return '#a78bfa';
+                case 'mention': return '#ffffff';
                 default: return 'var(--text-muted)';
             }
         }
@@ -1640,6 +1645,8 @@
             } else if (n.type === 'new_post') {
                 if (n.post_slug) navigate('/post/' + n.post_slug);
                 else if (n.from_id) navigate('/profile/' + n.from_id);
+            } else if (n.type === 'mention') {
+                if (n.post_slug) navigate('/post/' + n.post_slug);
             } else if (n.type === 'login') {
                 navigate('/profile');
                 setTimeout(() => { openSettings(); setTimeout(() => switchSettingsTab('sessions'), 100); }, 300);
@@ -2215,12 +2222,13 @@
             const postId = currentOptionsPostId;
             closeModal('postOptionsModal');
             const card = document.querySelector(`.post-card[data-id="${postId}"]`);
-            if (!card) return;
+            if (!card) { showToast('Пост не найден'); return; }
             const wrapper = card.querySelector('.post-wrapper');
+            if (!wrapper) { showToast('Не удалось найти содержимое'); return; }
             downloadPostWithWatermark(postId, wrapper);
         }
 
-        function downloadPostWithWatermark(postId, wrapper) {
+        async function downloadPostWithWatermark(postId, wrapper) {
             const slider = wrapper?.querySelector('.image-slider');
             let imgSrc = null;
             if (slider && slider.children.length > 0) {
@@ -2235,7 +2243,7 @@
             if (!imgSrc) {
                 const txt = wrapper?.querySelector('.post-text-content');
                 if (txt) { downloadTextPost(postId, txt); return; }
-                showToast('Не удалось загрузить изображение');
+                showToast('Изображение недоступно');
                 return;
             }
 
@@ -2246,11 +2254,25 @@
             }
 
             showToast('Подготовка...');
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => addWatermarkAndDownload(img, postId);
-            img.onerror = () => showToast('Ошибка загрузки');
-            img.src = imgSrc;
+            try {
+                const resp = await fetch(imgSrc);
+                const blob = await resp.blob();
+                const img = await new Promise((resolve, reject) => {
+                    const i = new Image();
+                    i.onload = () => resolve(i);
+                    i.onerror = reject;
+                    i.src = URL.createObjectURL(blob);
+                });
+                addWatermarkAndDownload(img, postId);
+            } catch (e) {
+                showToast('Скачивание без водяного знака...');
+                const a = document.createElement('a');
+                a.href = imgSrc;
+                a.download = `dump_${postId}.jpg`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
         }
 
         function addWatermarkAndDownload(img, postId) {
@@ -2294,6 +2316,7 @@
             ctx.fillRect(0, 0, w, h);
             ctx.fillStyle = 'rgba(255,255,255,0.92)';
             const text = el.textContent || '';
+            if (!text.trim()) { showToast('Пост пуст'); return; }
             const fs = text.length < 100 ? 28 : (text.length < 300 ? 20 : 16);
             ctx.font = `600 ${fs}px system-ui,sans-serif`;
             ctx.textAlign = 'left';
@@ -2369,7 +2392,7 @@
                     let slidesHtml = '';
                     let dotsHtml = '';
                     images.forEach((img, idx) => {
-                        slidesHtml += `<img src="${getProxyUrl(img)}" class="slider-img" loading="lazy" decoding="async">`;
+                        slidesHtml += `<img src="${getProxyUrl(img)}" class="slider-img" loading="lazy" decoding="async" onload="this.classList.add('loaded')">`;
                         dotsHtml += `<div class="slider-dot"></div>`;
                     });
                     contentHtml += `

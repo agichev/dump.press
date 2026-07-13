@@ -22,6 +22,7 @@ function sendFcmPush($pdo, $userId, $fromUserId, $type, $postId, $postSlug): voi
         case 'comment':  $body = "$username написал(а) комментарий к вашему посту"; break;
         case 'follow':   $body = "$username подписался(-ась) на вас"; break;
         case 'new_post': $body = "$username опубликовал(а) новый пост"; break;
+        case 'mention':  $body = "$username упомянул(а) вас в публикации"; break;
         case 'login':    $body = "Выполнен вход в ваш аккаунт"; break;
     }
 

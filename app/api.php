@@ -96,6 +96,11 @@ try {
         $GLOBALS['__pending_pushes'][] = [$pdo, $user_id, $from_user_id, $type, $post_id, $post_slug];
     }
 
+    function extractMentions($text) {
+        preg_match_all('/(?<=^|\s)@([^<>"\'(){}[\]|\\\\^,.!?;:\-]+)/u', $text, $matches);
+        return array_unique(array_map('trim', $matches[1]));
+    }
+
     switch ($action) {
 
         /* ---------------- АУТЕНТИФИКАЦИЯ ---------------- */
@@ -685,6 +690,17 @@ try {
             foreach ($followers as $fid) {
                 createNotification($pdo, (int)$fid, (int)$current_session['user_id'], 'new_post', $new_post_id, $slug);
             }
+
+            $mentions = extractMentions($content);
+            foreach ($mentions as $username) {
+                $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ?");
+                $stmt->execute([$username]);
+                $mentioned_user = $stmt->fetch();
+                if ($mentioned_user) {
+                    createNotification($pdo, (int)$mentioned_user['id'], (int)$current_session['user_id'], 'mention', $new_post_id, $slug);
+                }
+            }
+
             echo json_encode(['success' => true, 'slug' => $slug]);
             break;
 
@@ -785,6 +801,16 @@ try {
             $post_info = $stmt_post->fetch();
             if ($post_info) {
                 createNotification($pdo, (int)$post_info['user_id'], (int)$current_session['user_id'], 'comment', $post_id, $post_info['slug']);
+
+                $mentions = extractMentions($content);
+                foreach ($mentions as $username) {
+                    $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ?");
+                    $stmt->execute([$username]);
+                    $mentioned_user = $stmt->fetch();
+                    if ($mentioned_user) {
+                        createNotification($pdo, (int)$mentioned_user['id'], (int)$current_session['user_id'], 'mention', $post_id, $post_info['slug']);
+                    }
+                }
             }
             echo json_encode(['success' => true]);
             break;

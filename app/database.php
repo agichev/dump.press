@@ -21,6 +21,7 @@ try {
 
     $pdo->exec("CREATE DATABASE IF NOT EXISTS `$db_name` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
     $pdo->exec("USE `$db_name`");
+    $pdo->exec("SET time_zone = '+00:00'");
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS users (
