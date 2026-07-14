@@ -136,8 +136,11 @@ try {
 
             $recaptchaToken = trim($_POST['recaptcha_token'] ?? '');
             $turnstileToken = trim($_POST['turnstile_token'] ?? '');
+            $isDumpApp = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
 
-            if ($turnstileToken) {
+            if ($isDumpApp) {
+                // DumpApp — без каптчи
+            } elseif ($turnstileToken) {
                 if (!verifyTurnstile($turnstileToken)) {
                     throw new Exception('Проверка капчи не пройдена.');
                 }
