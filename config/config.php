@@ -6,7 +6,7 @@ if (!headers_sent()) {
     header("X-Content-Type-Options: nosniff");
     header("Referrer-Policy: strict-origin-when-cross-origin");
     header("Permissions-Policy: geolocation=(), microphone=(), camera=()");
-    header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; img-src 'self' data: blob: https: http:; connect-src 'self' https: wss:; frame-src 'self' https://www.google.com https://recaptcha.google.com https://www.clarity.ms; frame-ancestors 'none'; form-action 'self';");
+    header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; img-src 'self' data: blob: https: http:; connect-src 'self' https: wss:; frame-src 'self' https://www.google.com https://recaptcha.google.com https://www.clarity.ms https://challenges.cloudflare.com; frame-ancestors 'none'; form-action 'self';");
 }
 
 if (!function_exists('load_env')) {
@@ -62,6 +62,10 @@ $GLOBALS['db_password'] = env('DB_PASSWORD', '');
     // Google reCAPTCHA v3 (капча на входе/регистрации).
 $GLOBALS['RECAPTCHA_V3_SITE_KEY']   = env('RECAPTCHA_V3_SITE_KEY', '');
 $GLOBALS['RECAPTCHA_V3_SECRET_KEY'] = env('RECAPTCHA_V3_SECRET_KEY', '');
+
+// Cloudflare Turnstile (капча-запасной вариант).
+$GLOBALS['TURNSTILE_SITE_KEY']   = env('TURNSTILE_SITE_KEY', '');
+$GLOBALS['TURNSTILE_SECRET_KEY'] = env('TURNSTILE_SECRET_KEY', '');
 
 // Хостинг изображений imgbb.
 $GLOBALS['IMGBB_API_KEY'] = env('IMGBB_API_KEY', '');

@@ -510,7 +510,7 @@
             if (e.key === 'Escape') {
                 const legal = document.getElementById('legalModal');
                 if (legal && legal.classList.contains('open')) { closeLegal(); return; }
-                ['postOptionsModal', 'commentsModal', 'settingsModal', 'cropModal', 'searchModal', 'passwordModal', 'confirmModal', 'textWarningModal', 'tfaSettingsModal', 'tfaLoginModal', 'followingModal'].forEach(id => {
+                ['postOptionsModal', 'commentsModal', 'settingsModal', 'cropModal', 'searchModal', 'passwordModal', 'confirmModal', 'textWarningModal', 'tfaSettingsModal', 'tfaLoginModal', 'turnstileModal', 'followingModal'].forEach(id => {
                     const m = document.getElementById(id);
                     if(m && m.classList.contains('open')) closeModal(id);
                 });
@@ -587,9 +587,99 @@
                         await init();
                         navigate('/', true);
                     }
+                } else if (data.require_turnstile) {
+                    btn.textContent = origText;
+                    setFormState(form, false);
+                    isProcessing = false;
+                    showTurnstileModal(action, form);
+                    return;
                 } else showToast(data.error || 'Ошибка');
             } catch (err) { showToast('Ошибка соединения'); }
             finally { btn.textContent = origText; setFormState(form, false); isProcessing = false; }
+        }
+
+        let pendingTurnstileAuth = null;
+
+        function showTurnstileModal(action, form) {
+            pendingTurnstileAuth = { action, form };
+            openModal('turnstileModal', 'turnstileWidget');
+
+            const widget = document.getElementById('turnstileWidget');
+            if (!widget) return;
+            widget.innerHTML = '';
+
+            tryRenderTurnstile(widget, 0);
+        }
+
+        function tryRenderTurnstile(widget, attempt) {
+            if (!TURNSTILE_SITE_KEY) return;
+
+            if (window.turnstile) {
+                try {
+                    turnstile.render(widget, {
+                        sitekey: TURNSTILE_SITE_KEY,
+                        callback: function(token) {
+                            onTurnstilePassed(token);
+                        }
+                    });
+                    return;
+                } catch (e) {
+                    console.warn('Turnstile render failed:', e);
+                }
+            }
+
+            if (attempt < 20) {
+                setTimeout(() => tryRenderTurnstile(widget, attempt + 1), 1000);
+            }
+        }
+
+        async function onTurnstilePassed(token) {
+            if (!pendingTurnstileAuth) return;
+            const { action, form } = pendingTurnstileAuth;
+            pendingTurnstileAuth = null;
+
+            const fd = new FormData(form);
+            fd.append('csrf_token', csrfToken || '');
+            fd.append('turnstile_token', token);
+            if (window.__clientIp) fd.append('client_ip', window.__clientIp);
+
+            const btn = form.querySelector('button[type="submit"]');
+            const origText = btn ? btn.textContent : '';
+            if (btn) btn.innerHTML = '<i class="ph ph-spinner spin"></i>';
+
+            try {
+                const res = await fetch(apiCall(action), { method: 'POST', body: fd });
+                const data = await res.json();
+
+                if (data.success) {
+                    closeModal('turnstileModal');
+                    if (data.require_2fa) {
+                        tfaLoginTempToken = data.temp_token;
+                        tfaLoginMethod = data.method;
+                        const icon = document.getElementById('tfaLoginIcon');
+                        const desc = document.getElementById('tfaLoginDesc');
+                        if (tfaLoginMethod === 'email') {
+                            icon.className = 'ph ph-envelope-simple mb-4';
+                            desc.textContent = 'Мы отправили код подтверждения на ваш Email.';
+                        } else {
+                            icon.className = 'ph ph-device-mobile mb-4';
+                            desc.textContent = 'Введите код из приложения (Authenticator).';
+                        }
+                        document.getElementById('tfaLoginCode').value = '';
+                        openModal('tfaLoginModal', 'tfaLoginCode');
+                    } else {
+                        form.reset();
+                        await init();
+                        navigate('/', true);
+                    }
+                } else {
+                    showToast(data.error || 'Ошибка');
+                }
+            } catch (err) {
+                showToast('Ошибка соединения');
+            } finally {
+                if (btn) btn.textContent = origText;
+            }
         }
 
         async function verifyTfaLogin(e) {

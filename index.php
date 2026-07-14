@@ -31,6 +31,7 @@ $path_parts = explode('/', $_req);
 $recaptcha_site_key   = $GLOBALS['RECAPTCHA_V3_SITE_KEY'] ?? '';
 $recaptcha_secret_key = $GLOBALS['RECAPTCHA_V3_SECRET_KEY'] ?? '';
 $recaptcha_enabled    = $recaptcha_site_key !== '' && $recaptcha_secret_key !== '';
+$turnstile_site_key   = $GLOBALS['TURNSTILE_SITE_KEY'] ?? '';
 
 $random_titles = ["Dump", "Настоящий Dump"];
 $seo_title = $random_titles[array_rand($random_titles)];
@@ -151,6 +152,9 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
     <style>.grecaptcha-badge{visibility:hidden!important;opacity:0!important}</style>
     <script src="https://www.google.com/recaptcha/api.js?render=<?= htmlspecialchars($recaptcha_site_key, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>" async defer></script>
     <?php endif; ?>
+    <?php if ($turnstile_site_key): ?>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    <?php endif; ?>
     <?php if ($seo_jsonld): ?>
     <?= $seo_jsonld ?>
     <?php endif; ?>
@@ -193,6 +197,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
 
         const RECAPTCHA_ENABLED = <?php echo $recaptcha_enabled ? 'true' : 'false'; ?>;
         window.RecaptchaSiteKey = '<?php echo htmlspecialchars($recaptcha_site_key, ENT_QUOTES | ENT_HTML5, 'UTF-8'); ?>';
+        const TURNSTILE_SITE_KEY = '<?php echo htmlspecialchars($turnstile_site_key, ENT_QUOTES | ENT_HTML5, 'UTF-8'); ?>';
 
         const getProxyUrl = (url) => {
             if (!url) return '';
@@ -584,6 +589,17 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
         </div>
     </div>
 
+    <div id="turnstileModal" class="modal-overlay" style="z-index: 200;" onclick="if(event.target===this){pendingTurnstileAuth=null;closeModal('turnstileModal')}">
+        <div class="modal-content" style="max-width:360px">
+            <div class="modal-header">
+                <h3>Подтверждение</h3>
+                <button class="modal-close" onclick="pendingTurnstileAuth=null;closeModal('turnstileModal')">&times;</button>
+            </div>
+            <div class="modal-body text-center">
+                <div id="turnstileWidget" style="min-height:72px"></div>
+            </div>
+        </div>
+    </div>
 
     <div id="legalModal" class="modal-overlay" onclick="if(event.target.id==='legalModal') closeLegal()">
         <div class="modal-content" style="max-width: 680px; max-height: 90vh; display:flex; flex-direction:column;">

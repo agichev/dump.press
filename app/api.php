@@ -133,8 +133,19 @@ try {
             if (!checkRateLimit('login_' . getClientIp(), 10, 60)) {
                 throw new Exception('Слишком много попыток входа. Попробуйте через минуту.');
             }
-            if (!verifyRecaptcha(trim($_POST['recaptcha_token'] ?? ''))) {
-                throw new Exception('Проверка капчи не пройдена. Обновите страницу.');
+
+            $recaptchaToken = trim($_POST['recaptcha_token'] ?? '');
+            $turnstileToken = trim($_POST['turnstile_token'] ?? '');
+
+            if ($turnstileToken) {
+                if (!verifyTurnstile($turnstileToken)) {
+                    throw new Exception('Проверка капчи не пройдена.');
+                }
+            } else {
+                if (!verifyRecaptcha($recaptchaToken)) {
+                    echo json_encode(['success' => false, 'require_turnstile' => true]);
+                    exit;
+                }
             }
             $email = filter_var(trim($_POST['email'] ?? ''), FILTER_VALIDATE_EMAIL);
             $password = $_POST['password'] ?? '';
@@ -1076,10 +1087,10 @@ try {
     echo json_encode(['success' => false, 'error' => 'Внутренняя ошибка базы данных']);
 } catch (Exception $e) {
     error_log("API_ERROR: " . $e->getMessage());
-    echo json_encode(['success' => false, 'error' => 'Произошла ошибка. Попробуйте позже.']);
+    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 } catch (Throwable $e) {
     error_log("FATAL: " . $e->getMessage());
-    echo json_encode(['success' => false, 'error' => 'Внутренняя ошибка сервера']);
+    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 }
 dispatchPendingPushes();
 exit;

@@ -14,6 +14,18 @@ vps_key.pub
 # Заметки по VPS / деплою
 VPS.md
 
+# Go build output
+dump-server
+*.exe
+
+# VPS / инфраструктура
+vps_key
+vps_key.pub
+VPS.md
+
+# Бекапы
+dump.press.backup.*/
+
 # Временные файлы / IDE
 *.log
 *.cache
