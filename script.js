@@ -4071,11 +4071,14 @@
 
             const decryptedContents = {};
             for (const msg of msgs) {
-                if (msg._displayContent) {
-                    decryptedContents[msg.id] = msg._displayContent;
-                } else if (msg.sender_id === currentUser.id && msg.content && msg.content.startsWith('!sig')) {
-                    const cacheKey = msg.content.substring(0, 80);
-                    decryptedContents[msg.id] = _sentCache[cacheKey] || '[Зашифрованное сообщение]';
+                if (msg.sender_id === currentUser.id) {
+                    if (msg._displayContent) {
+                        decryptedContents[msg.id] = msg._displayContent;
+                    } else if (msg.content && msg.content.startsWith('!sig')) {
+                        decryptedContents[msg.id] = _sentCache[msg.content.substring(0, 80)] || '[Зашифрованное сообщение]';
+                    } else {
+                        decryptedContents[msg.id] = msg.content || '';
+                    }
                 } else if (msg.content && msg.content.startsWith('!sig')) {
                     const partnerId = currentConvPartner ? currentConvPartner.id : msg.sender_id;
                     decryptedContents[msg.id] = await sigDecryptMessage(msg.content, currentConvId, partnerId);
@@ -4250,7 +4253,13 @@
                     showToast('Инициализация шифрования, повторите отправку');
                     return;
                 } else {
-                    await storePendingMessage(currentConvId, originalText);
+                    const retry = await sigEncryptMessage(content, currentConvId, partnerId);
+                    if (retry) {
+                        content = retry;
+                        _sentCache[content.substring(0, 80)] = originalText;
+                        saveSentCache();
+                    } else {
+                        await storePendingMessage(currentConvId, originalText);
                     if (currentConvId) {
                         if (!messengerMessages[currentConvId]) messengerMessages[currentConvId] = [];
                         messengerMessages[currentConvId].push({
