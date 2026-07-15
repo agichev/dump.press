@@ -27,6 +27,12 @@
         let captchaRequired = false;
         let _pendingSpamMessage = null;
         let _blockedUserIds = new Set();
+        let _sentCache = {};
+        try { const s = localStorage.getItem('dump_sent_cache'); if (s) _sentCache = JSON.parse(s); } catch(e) {}
+
+        function saveSentCache() {
+            try { localStorage.setItem('dump_sent_cache', JSON.stringify(_sentCache)); } catch(e) {}
+        }
 
         async function syncBlockedUsers() {
             try {
@@ -4068,8 +4074,8 @@
                 if (msg._displayContent) {
                     decryptedContents[msg.id] = msg._displayContent;
                 } else if (msg.sender_id === currentUser.id && msg.content && msg.content.startsWith('!sig')) {
-                    const selfDecrypted = await sigDecryptMessage(msg.content, currentConvId, currentUser.id);
-                    decryptedContents[msg.id] = selfDecrypted || '[Зашифрованное сообщение]';
+                    const cacheKey = msg.content.substring(0, 80);
+                    decryptedContents[msg.id] = _sentCache[cacheKey] || '[Зашифрованное сообщение]';
                 } else if (msg.content && msg.content.startsWith('!sig')) {
                     const partnerId = currentConvPartner ? currentConvPartner.id : msg.sender_id;
                     decryptedContents[msg.id] = await sigDecryptMessage(msg.content, currentConvId, partnerId);
@@ -4238,6 +4244,8 @@
                 const encrypted = await sigEncryptMessage(content, currentConvId, partnerId);
                 if (encrypted) {
                     content = encrypted;
+                    _sentCache[content.substring(0, 80)] = originalText;
+                    saveSentCache();
                 } else if (!sigKeysUploaded) {
                     showToast('Инициализация шифрования, повторите отправку');
                     return;
@@ -4308,6 +4316,10 @@
                             }
                         }
                         if (plaintext) data.message._displayContent = plaintext;
+                        if (data.message.content && data.message.content.startsWith('!sig') && plaintext) {
+                            _sentCache[data.message.content.substring(0, 80)] = plaintext;
+                            saveSentCache();
+                        }
                         msgs.push(data.message);
                         renderMessages();
                         scrollChatDown();
