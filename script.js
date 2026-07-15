@@ -27,12 +27,6 @@
         let captchaRequired = false;
         let _pendingSpamMessage = null;
         let _blockedUserIds = new Set();
-        let _sentCache = {};
-        try { const s = localStorage.getItem('dump_sent_cache'); if (s) _sentCache = JSON.parse(s); } catch(e) {}
-
-        function saveSentCache() {
-            try { localStorage.setItem('dump_sent_cache', JSON.stringify(_sentCache)); } catch(e) {}
-        }
 
         async function syncBlockedUsers() {
             try {
@@ -3613,40 +3607,9 @@
 
                     if (currentConvId == msg.conversation_id) {
                         if (!messengerMessages[currentConvId]) messengerMessages[currentConvId] = [];
-                        if (msg.sender_id == currentUser.id) {
-                            const msgs = messengerMessages[currentConvId];
-                            let plaintext = null;
-                            for (let i = msgs.length - 1; i >= 0; i--) {
-                                if (msgs[i].id < 0) {
-                                    if (msgs[i]._displayContent) plaintext = msgs[i]._displayContent;
-                                    msgs.splice(i, 1);
-                                }
-                            }
-                            if (plaintext) msg._displayContent = plaintext;
-                        }
-                        const exists = messengerMessages[currentConvId].find(m => m.id == msg.id);
-                        if (exists) {
-                            if (msg.sender_id === currentUser.id && msg.content !== exists.content) {
-                                exists.my_status = msg.my_status || exists.my_status;
-                                exists.id = msg.id;
-                            }
-                        } else {
-                            const temp = msg.sender_id === currentUser.id
-                                ? messengerMessages[currentConvId].find(m => m.id < 0)
-                                : null;
-                            if (temp && msg.sender_id === currentUser.id) {
-                                temp.id = msg.id;
-                                temp.my_status = msg.my_status || 'sent';
-                            } else {
-                                if (currentConvPartner && msg.sender_id !== currentUser.id) {
-                                    const decrypted = await sigDecryptMessage(msg.content || '', currentConvId, msg.sender_id);
-                                    if (decrypted && !decrypted.startsWith('[')) msg.content = decrypted;
-                                }
-                                messengerMessages[currentConvId].push(msg);
-                            }
-                            renderMessages();
-                            scrollChatDown();
-                        }
+                        const existingIdx = messengerMessages[currentConvId].findIndex(m => m.id === msg.id);
+                        if (existingIdx === -1) {
+                            messengerMessages[currentConvId].push(msg);
                         if (msg.sender_id != currentUser.id) {
                             markAsRead(currentConvId);
                         }
@@ -4071,19 +4034,11 @@
 
             const decryptedContents = {};
             for (const msg of msgs) {
-                if (msg.sender_id === currentUser.id) {
-                    if (msg._displayContent) {
-                        decryptedContents[msg.id] = msg._displayContent;
-                    } else if (msg.content && msg.content.startsWith('!sig')) {
-                        decryptedContents[msg.id] = _sentCache[msg.content.substring(0, 80)] || '[Зашифрованное сообщение]';
-                    } else {
-                        decryptedContents[msg.id] = msg.content || '';
-                    }
-                } else if (msg.content && msg.content.startsWith('!sig')) {
-                    const partnerId = currentConvPartner ? currentConvPartner.id : msg.sender_id;
-                    decryptedContents[msg.id] = await sigDecryptMessage(msg.content, currentConvId, partnerId);
-                } else {
+                if (msg.sender_id === currentUser.id || !msg.content.startsWith('!sig')) {
                     decryptedContents[msg.id] = msg.content || '';
+                } else {
+                    const partnerId = currentConvPartner ? currentConvPartner.id : msg.sender_id;
+                    decryptedContents[msg.id] = await sigDecryptMessage(msg.content || '', currentConvId, partnerId);
                 }
             }
 
@@ -4194,16 +4149,6 @@
             }
         }
 
-        async function storePendingMessage(convId, content) {
-            try {
-                const fd = new FormData();
-                fd.append('conversation_id', convId);
-                fd.append('content', content);
-                fd.append('csrf_token', csrfToken);
-                await fetch(apiCall('store_pending_message'), { method: 'POST', body: fd });
-            } catch(e) {}
-        }
-
         async function sendChatMessage(e) {
             e.preventDefault();
             const input = document.getElementById('chatInput');
@@ -4245,51 +4190,25 @@
             const originalText = content;
             if (partnerId) {
                 const encrypted = await sigEncryptMessage(content, currentConvId, partnerId);
-                if (encrypted) {
-                    content = encrypted;
-                    _sentCache[content.substring(0, 80)] = originalText;
-                    saveSentCache();
-                } else if (!sigKeysUploaded) {
-                    showToast('Инициализация шифрования, повторите отправку');
-                    return;
-                } else {
-                    const retry = await sigEncryptMessage(content, currentConvId, partnerId);
-                    if (retry) {
-                        content = retry;
-                        _sentCache[content.substring(0, 80)] = originalText;
-                        saveSentCache();
-                    } else {
-                        await storePendingMessage(currentConvId, originalText);
-                    if (currentConvId) {
-                        if (!messengerMessages[currentConvId]) messengerMessages[currentConvId] = [];
-                        messengerMessages[currentConvId].push({
-                            id: -Date.now(),
-                            sender_id: currentUser.id,
-                            content: originalText,
-                            _displayContent: originalText,
-                            my_status: 'sent',
-                            created_at: new Date().toISOString(),
-                            username: currentUser.username,
-                            avatar_url: currentUser.avatar_url,
-                        });
-                        renderMessages();
-                        scrollChatDown();
+                if (!encrypted) {
+                    if (!sigKeysUploaded) {
+                        showToast('Инициализация шифрования, повторите отправку');
+                        return;
                     }
-                    cancelReply();
-                    input.value = '';
-                    input.style.height = 'auto';
-                    return;
+                    const retry = await sigEncryptMessage(content, currentConvId, partnerId);
+                    if (!retry) { showToast('Нет ключей шифрования у собеседника'); return; }
+                    content = retry;
                 }
             }
-            }
 
-            if (currentConvId) {
+            const isEncrypted = content !== originalText;
+            const tempId = -Date.now();
+            if (isEncrypted && currentConvId) {
                 if (!messengerMessages[currentConvId]) messengerMessages[currentConvId] = [];
                 messengerMessages[currentConvId].push({
-                    id: -Date.now(),
+                    id: tempId,
                     sender_id: currentUser.id,
                     content: originalText,
-                    _displayContent: originalText,
                     my_status: 'sent',
                     created_at: new Date().toISOString(),
                     username: currentUser.username,
@@ -4317,20 +4236,7 @@
                     const data = await res.json();
                     if (data.success && data.message) {
                         if (!messengerMessages[currentConvId]) messengerMessages[currentConvId] = [];
-                        const msgs = messengerMessages[currentConvId];
-                        let plaintext = null;
-                        for (let i = msgs.length - 1; i >= 0; i--) {
-                            if (msgs[i].id < 0) {
-                                if (msgs[i]._displayContent) plaintext = msgs[i]._displayContent;
-                                msgs.splice(i, 1);
-                            }
-                        }
-                        if (plaintext) data.message._displayContent = plaintext;
-                        if (data.message.content && data.message.content.startsWith('!sig') && plaintext) {
-                            _sentCache[data.message.content.substring(0, 80)] = plaintext;
-                            saveSentCache();
-                        }
-                        msgs.push(data.message);
+                        messengerMessages[currentConvId].push(data.message);
                         renderMessages();
                         scrollChatDown();
                     } else if (data.require_captcha) {
