@@ -3610,6 +3610,9 @@
                         const existingIdx = messengerMessages[currentConvId].findIndex(m => m.id === msg.id);
                         if (existingIdx === -1) {
                             messengerMessages[currentConvId].push(msg);
+                            renderMessages();
+                            scrollChatDown();
+                        }
                         if (msg.sender_id != currentUser.id) {
                             markAsRead(currentConvId);
                         }
