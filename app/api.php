@@ -235,7 +235,7 @@ try {
 
         case 'me':
             if ($current_session) {
-                $stmt = $pdo->prepare("SELECT id, username, email, avatar_url, bio, created_at, tfa_enabled, bookmarks_public FROM users WHERE id = ?");
+                $stmt = $pdo->prepare("SELECT id, username, email, avatar_url, bio, created_at, tfa_enabled, bookmarks_public, privacy_searchable, privacy_messages, privacy_beta FROM users WHERE id = ?");
                 $stmt->execute([$current_session['user_id']]);
                 $user = $stmt->fetch();
                 $user['username'] = htmlspecialchars($user['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -359,7 +359,7 @@ try {
             $stmt_posts->execute(["%$q%"]);
             $posts = $stmt_posts->fetchAll();
 
-            $stmt_users = $pdo->prepare("SELECT id, username, avatar_url FROM users WHERE username LIKE ? LIMIT 10");
+            $stmt_users = $pdo->prepare("SELECT id, username, avatar_url FROM users WHERE username LIKE ? AND privacy_searchable = 1 LIMIT 10");
             $stmt_users->execute(["%$q%"]);
             $users = $stmt_users->fetchAll();
 
@@ -1068,6 +1068,404 @@ try {
             $pdo->prepare("DELETE FROM fcm_tokens WHERE user_id = ? AND token = ?")->execute([$current_session['user_id'], $token]);
             $stmt = $pdo->prepare("INSERT INTO fcm_tokens (user_id, token) VALUES (?, ?)");
             $stmt->execute([$current_session['user_id'], $token]);
+            echo json_encode(['success' => true]);
+            break;
+
+        /* ---------------- МЕССЕНДЖЕР ---------------- */
+        case 'conversations':
+            requireAuth();
+            $stmt = $pdo->prepare("
+                SELECT c.id,
+                    (SELECT m.content FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message,
+                    (SELECT m.created_at FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message_at,
+                    (SELECT m.sender_id FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_sender_id,
+                    (SELECT COUNT(*) FROM message_status ms JOIN messages m ON ms.message_id = m.id WHERE m.conversation_id = c.id AND ms.user_id = ? AND ms.status IN ('sent','delivered')) as unread_count,
+                    cp.last_read_at
+                FROM conversations c
+                JOIN conversation_participants cp ON c.id = cp.conversation_id AND cp.user_id = ?
+                WHERE cp.is_deleted = 0
+                ORDER BY c.updated_at DESC
+            ");
+            $stmt->execute([$current_session['user_id'], $current_session['user_id']]);
+            $conversations = $stmt->fetchAll();
+
+            foreach ($conversations as &$conv) {
+                $stmt2 = $pdo->prepare("
+                    SELECT u.id, u.username, u.avatar_url
+                    FROM conversation_participants cp JOIN users u ON cp.user_id = u.id
+                    WHERE cp.conversation_id = ? AND cp.user_id != ?
+                ");
+                $stmt2->execute([$conv['id'], $current_session['user_id']]);
+                $conv['participants'] = $stmt2->fetchAll();
+                foreach ($conv['participants'] as &$p) {
+                    $p['username'] = htmlspecialchars($p['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                    $p['avatar_url'] = htmlspecialchars($p['avatar_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                }
+                if ($conv['last_message']) {
+                    $conv['last_message'] = htmlspecialchars($conv['last_message'], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                }
+            }
+
+            echo json_encode(['success' => true, 'conversations' => $conversations]);
+            break;
+
+        case 'messages':
+            requireAuth();
+            $conv_id = (int)($_GET['conversation_id'] ?? 0);
+            $before = (int)($_GET['before'] ?? 0);
+            $limit = min((int)($_GET['limit'] ?? 50), 100);
+
+            $stmt_check = $pdo->prepare("SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?");
+            $stmt_check->execute([$conv_id, $current_session['user_id']]);
+            if (!$stmt_check->fetch()) throw new Exception('Доступ запрещен');
+
+            $uid = (int)$current_session['user_id'];
+            $sql = "
+                SELECT m.*, u.username, u.avatar_url
+                FROM messages m JOIN users u ON m.sender_id = u.id
+                WHERE m.conversation_id = ? AND m.deleted_at IS NULL
+            ";
+            $params = [$conv_id];
+
+            if ($before > 0) {
+                $sql .= ' AND m.id < ?';
+                $params[] = $before;
+            }
+
+            $sql .= ' ORDER BY m.id DESC LIMIT ?';
+            $params[] = $limit;
+
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            $messages = $stmt->fetchAll();
+            $messages = array_reverse($messages);
+
+            $msg_ids = array_column($messages, 'id');
+            if (!empty($msg_ids)) {
+                $in_placeholders = implode(',', array_fill(0, count($msg_ids), '?'));
+                $stmt_status = $pdo->prepare("SELECT message_id, user_id, status FROM message_status WHERE message_id IN ($in_placeholders)");
+                $stmt_status->execute($msg_ids);
+                $status_rows = $stmt_status->fetchAll();
+
+                foreach ($messages as &$msg) {
+                    $other = null;
+                    $my = null;
+                    foreach ($status_rows as $sr) {
+                        if ((int)$sr['message_id'] === (int)$msg['id']) {
+                            if ((int)$sr['user_id'] === $uid) $my = $sr['status'];
+                            else $other = $sr['status'];
+                        }
+                    }
+                    if ((int)$msg['sender_id'] === $uid) {
+                        $msg['my_status'] = $other ?: 'sent';
+                    } else {
+                        $msg['my_status'] = $my ?: 'sent';
+                    }
+                }
+            }
+
+            foreach ($messages as &$msg) {
+                $msg['content'] = htmlspecialchars($msg['content'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                $msg['username'] = htmlspecialchars($msg['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                $msg['avatar_url'] = htmlspecialchars($msg['avatar_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            }
+
+            echo json_encode(['success' => true, 'messages' => $messages]);
+            break;
+
+        case 'update_privacy':
+            requireAuth();
+            $searchable = isset($_POST['privacy_searchable']) ? (int)(bool)$_POST['privacy_searchable'] : null;
+            $messages = isset($_POST['privacy_messages']) ? (int)(bool)$_POST['privacy_messages'] : null;
+            $beta = isset($_POST['privacy_beta']) ? (int)(bool)$_POST['privacy_beta'] : null;
+
+            $updates = [];
+            $params = [];
+            if ($searchable !== null) {
+                $updates[] = 'privacy_searchable = ?';
+                $params[] = $searchable;
+            }
+            if ($messages !== null) {
+                $updates[] = 'privacy_messages = ?';
+                $params[] = $messages;
+            }
+            if ($beta !== null) {
+                $updates[] = 'privacy_beta = ?';
+                $params[] = $beta;
+            }
+
+            if (!empty($updates)) {
+                $params[] = $current_session['user_id'];
+                $pdo->prepare("UPDATE users SET " . implode(', ', $updates) . " WHERE id = ?")->execute($params);
+            }
+
+            echo json_encode(['success' => true]);
+            break;
+
+        case 'can_message':
+            requireAuth();
+            $target_id = (int)($_GET['user_id'] ?? 0);
+            $stmt = $pdo->prepare("SELECT privacy_messages FROM users WHERE id = ?");
+            $stmt->execute([$target_id]);
+            $target = $stmt->fetch();
+            if (!$target) throw new Exception('Пользователь не найден');
+
+            $is_following = false;
+            $stmt = $pdo->prepare("SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?");
+            $stmt->execute([$current_session['user_id'], $target_id]);
+            $is_following = (bool)$stmt->fetch();
+
+            echo json_encode([
+                'success' => true,
+                'can_message' => (bool)$target['privacy_messages'] || $is_following,
+                'privacy_messages' => (bool)$target['privacy_messages'],
+                'is_following' => $is_following,
+            ]);
+            break;
+
+        case 'check_privacy':
+            requireAuth();
+            $stmt = $pdo->prepare("SELECT privacy_searchable, privacy_messages, privacy_beta FROM users WHERE id = ?");
+            $stmt->execute([$current_session['user_id']]);
+            $privacy = $stmt->fetch();
+            echo json_encode(['success' => true, 'privacy' => $privacy]);
+            break;
+
+        case 'signal_upload':
+            requireAuth();
+            $uid = (int)$current_session['user_id'];
+            $id_dh_pub = trim($_POST['identity_dh_pub'] ?? '');
+            $id_ds_pub = trim($_POST['identity_ds_pub'] ?? '');
+            $spk_pub = trim($_POST['spk_pub'] ?? '');
+            $spk_sig = trim($_POST['spk_sig'] ?? '');
+            $otpks_json = trim($_POST['otpks'] ?? '[]');
+
+            if ($id_dh_pub) {
+                $pdo->prepare("INSERT INTO signal_prekeys (user_id, key_id, public_key, is_signed) VALUES (?, 0, ?, 0) ON DUPLICATE KEY UPDATE public_key = ?")
+                    ->execute([$uid, $id_dh_pub, $id_dh_pub]);
+            }
+            if ($id_ds_pub) {
+                $pdo->prepare("INSERT INTO signal_prekeys (user_id, key_id, public_key, is_signed) VALUES (?, 1, ?, 0) ON DUPLICATE KEY UPDATE public_key = ?")
+                    ->execute([$uid, $id_ds_pub, $id_ds_pub]);
+            }
+            if ($spk_pub && $spk_sig) {
+                $pdo->prepare("INSERT INTO signal_prekeys (user_id, key_id, public_key, signature, is_signed) VALUES (?, 2, ?, ?, 1) ON DUPLICATE KEY UPDATE public_key = ?, signature = ?")
+                    ->execute([$uid, $spk_pub, $spk_sig, $spk_pub, $spk_sig]);
+            }
+
+            $otpks = json_decode($otpks_json, true);
+            if (is_array($otpks)) {
+                $stmt_del = $pdo->prepare("DELETE FROM signal_prekeys WHERE user_id = ? AND is_signed = 0 AND key_id > 2 AND is_used = 0");
+                $stmt_del->execute([$uid]);
+                foreach ($otpks as $i => $pub) {
+                    if (!is_string($pub) || !$pub) continue;
+                    $kid = 100 + $i;
+                    $pdo->prepare("INSERT INTO signal_prekeys (user_id, key_id, public_key, is_signed) VALUES (?, ?, ?, 0) ON DUPLICATE KEY UPDATE public_key = ?")
+                        ->execute([$uid, $kid, $pub, $pub]);
+                }
+            }
+
+            echo json_encode(['success' => true]);
+            break;
+
+        case 'signal_bundle':
+            requireAuth();
+            $target_id = (int)($_GET['user_id'] ?? 0);
+            if (!$target_id) throw new Exception('Invalid user');
+
+            $stmt = $pdo->prepare("SELECT public_key FROM signal_prekeys WHERE user_id = ? AND key_id = 0 LIMIT 1");
+            $stmt->execute([$target_id]);
+            $id_dh = $stmt->fetchColumn();
+
+            $stmt = $pdo->prepare("SELECT public_key FROM signal_prekeys WHERE user_id = ? AND key_id = 1 LIMIT 1");
+            $stmt->execute([$target_id]);
+            $id_ds = $stmt->fetchColumn();
+
+            $stmt = $pdo->prepare("SELECT public_key, signature FROM signal_prekeys WHERE user_id = ? AND key_id = 2 LIMIT 1");
+            $stmt->execute([$target_id]);
+            $spk = $stmt->fetch();
+
+            $otpk_pub = null;
+            $otpk_id = null;
+            $stmt = $pdo->prepare("SELECT id, key_id, public_key FROM signal_prekeys WHERE user_id = ? AND is_signed = 0 AND key_id > 2 AND is_used = 0 ORDER BY key_id ASC LIMIT 1");
+            $stmt->execute([$target_id]);
+            $otpk = $stmt->fetch();
+            if ($otpk) {
+                $otpk_pub = $otpk['public_key'];
+                $otpk_id = $otpk['key_id'];
+            }
+
+            echo json_encode([
+                'success' => true,
+                'identity_dh_pub' => $id_dh ?: '',
+                'identity_ds_pub' => $id_ds ?: '',
+                'spk_pub' => $spk ? $spk['public_key'] : '',
+                'spk_sig' => $spk ? $spk['signature'] : '',
+                'otpk_pub' => $otpk_pub,
+                'otpk_id' => $otpk_id,
+            ]);
+            break;
+
+        case 'signal_consume':
+            requireAuth();
+            $otpk_id = (int)($_POST['otpk_id'] ?? 0);
+            if ($otpk_id) {
+                $pdo->prepare("UPDATE signal_prekeys SET is_used = 1 WHERE user_id = ? AND key_id = ?")
+                    ->execute([$current_session['user_id'], $otpk_id]);
+            }
+            echo json_encode(['success' => true]);
+            break;
+
+        case 'signal_key':
+            requireAuth();
+            $target_id = (int)($_GET['user_id'] ?? $current_session['user_id']);
+            $stmt = $pdo->prepare("SELECT public_key FROM signal_prekeys WHERE user_id = ? AND key_id = 0 LIMIT 1");
+            $stmt->execute([$target_id]);
+            $key = $stmt->fetchColumn();
+            echo json_encode(['success' => true, 'public_key' => $key ?: '']);
+            break;
+
+        case 'message_send':
+            requireAuth();
+            $conv_id = (int)($_POST['conversation_id'] ?? 0);
+            $content = trim($_POST['content'] ?? '');
+            $reply_to = !empty($_POST['reply_to']) ? (int)$_POST['reply_to'] : null;
+
+            if (empty($content)) throw new Exception('Пустое сообщение');
+
+            $stmt_check = $pdo->prepare("SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?");
+            $stmt_check->execute([$conv_id, $current_session['user_id']]);
+            if (!$stmt_check->fetch()) throw new Exception('Доступ запрещен');
+
+            $stmt = $pdo->prepare("INSERT INTO messages (conversation_id, sender_id, content, reply_to) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$conv_id, $current_session['user_id'], $content, $reply_to]);
+            $msg_id = (int)$pdo->lastInsertId();
+
+            $stmt_participants = $pdo->prepare("SELECT user_id FROM conversation_participants WHERE conversation_id = ? AND user_id != ?");
+            $stmt_participants->execute([$conv_id, $current_session['user_id']]);
+            while ($p = $stmt_participants->fetch()) {
+                $pdo->prepare("INSERT INTO message_status (message_id, user_id, status) VALUES (?, ?, 'sent')")->execute([$msg_id, $p['user_id']]);
+            }
+
+            $uid = (int)$current_session['user_id'];
+            $stmt_msg = $pdo->prepare("
+                SELECT m.*, u.username, u.avatar_url
+                FROM messages m JOIN users u ON m.sender_id = u.id
+                WHERE m.id = ?
+            ");
+            $stmt_msg->execute([$msg_id]);
+            $message = $stmt_msg->fetch();
+
+            $stmt_s = $pdo->prepare("SELECT user_id, status FROM message_status WHERE message_id = ?");
+            $stmt_s->execute([$msg_id]);
+            $srows = $stmt_s->fetchAll();
+            $others = []; $my = null;
+            foreach ($srows as $sr) {
+                if ((int)$sr['user_id'] === $uid) $my = $sr['status'];
+                else $others[] = $sr['status'];
+            }
+            $message['my_status'] = ((int)$message['sender_id'] === $uid)
+                ? ($others[0] ?? 'sent')
+                : ($my ?? 'sent');
+
+            $message['content'] = htmlspecialchars($message['content'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $message['username'] = htmlspecialchars($message['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $message['avatar_url'] = htmlspecialchars($message['avatar_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+            $pdo->prepare("UPDATE conversations SET updated_at = NOW() WHERE id = ?")->execute([$conv_id]);
+
+            echo json_encode(['success' => true, 'message' => $message]);
+            break;
+
+        case 'conversation_create':
+            requireAuth();
+            $target_id = (int)($_POST['user_id'] ?? 0);
+            if ($target_id === (int)$current_session['user_id']) throw new Exception('Нельзя создать чат с собой');
+
+            $stmt = $pdo->prepare("SELECT privacy_messages FROM users WHERE id = ?");
+            $stmt->execute([$target_id]);
+            $target = $stmt->fetch();
+            if (!$target) throw new Exception('Пользователь не найден');
+
+            $stmt = $pdo->prepare("SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?");
+            $stmt->execute([$current_session['user_id'], $target_id]);
+            $is_following = (bool)$stmt->fetch();
+
+            if (!$target['privacy_messages'] && !$is_following) {
+                throw new Exception('Этот пользователь не принимает личные сообщения');
+            }
+
+            $stmt = $pdo->prepare("
+                SELECT c.id FROM conversations c
+                JOIN conversation_participants cp1 ON c.id = cp1.conversation_id AND cp1.user_id = ?
+                JOIN conversation_participants cp2 ON c.id = cp2.conversation_id AND cp2.user_id = ?
+                WHERE (SELECT COUNT(*) FROM conversation_participants WHERE conversation_id = c.id) = 2
+            ");
+            $stmt->execute([$current_session['user_id'], $target_id]);
+            $existing = $stmt->fetch();
+
+            if ($existing) {
+                $pdo->prepare("UPDATE conversation_participants SET is_deleted = 0 WHERE conversation_id = ? AND user_id IN (?, ?)")
+                    ->execute([$existing['id'], $current_session['user_id'], $target_id]);
+                echo json_encode(['success' => true, 'conversation_id' => (int)$existing['id'], 'existing' => true]);
+                break;
+            }
+
+            $pdo->prepare("INSERT INTO conversations () VALUES ()")->execute();
+            $conv_id = (int)$pdo->lastInsertId();
+            $pdo->prepare("INSERT INTO conversation_participants (conversation_id, user_id) VALUES (?, ?), (?, ?)")
+                ->execute([$conv_id, $current_session['user_id'], $conv_id, $target_id]);
+
+            echo json_encode(['success' => true, 'conversation_id' => $conv_id, 'existing' => false]);
+            break;
+
+        case 'can_start_conversation':
+            requireAuth();
+            $target_id = (int)($_GET['user_id'] ?? 0);
+            $stmt = $pdo->prepare("SELECT privacy_messages FROM users WHERE id = ?");
+            $stmt->execute([$target_id]);
+            $target = $stmt->fetch();
+            if (!$target) throw new Exception('Пользователь не найден');
+
+            $stmt = $pdo->prepare("SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?");
+            $stmt->execute([$current_session['user_id'], $target_id]);
+            $is_following = (bool)$stmt->fetch();
+
+            echo json_encode([
+                'success' => true,
+                'can_message' => (bool)$target['privacy_messages'] || $is_following,
+            ]);
+            break;
+
+        case 'leave_conversation':
+            requireAuth();
+            $conv_id = (int)($_POST['conversation_id'] ?? 0);
+            $stmt = $pdo->prepare("UPDATE conversation_participants SET is_deleted = 1 WHERE conversation_id = ? AND user_id = ?");
+            $stmt->execute([$conv_id, $current_session['user_id']]);
+            echo json_encode(['success' => true]);
+            break;
+
+        case 'clear_conversation':
+            requireAuth();
+            $conv_id = (int)($_POST['conversation_id'] ?? 0);
+            $stmt_check = $pdo->prepare("SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?");
+            $stmt_check->execute([$conv_id, $current_session['user_id']]);
+            if (!$stmt_check->fetch()) throw new Exception('Доступ запрещен');
+            $pdo->prepare("UPDATE messages SET deleted_at = NOW() WHERE conversation_id = ?")->execute([$conv_id]);
+            echo json_encode(['success' => true]);
+            break;
+
+        case 'block_user':
+            requireAuth();
+            $blocked_id = (int)($_POST['user_id'] ?? 0);
+            $conv_id = (int)($_POST['conversation_id'] ?? 0);
+            if ($blocked_id === (int)$current_session['user_id']) throw new Exception('Нельзя заблокировать себя');
+            $pdo->prepare("INSERT IGNORE INTO blocked_users (blocker_id, blocked_id) VALUES (?, ?)")
+                ->execute([$current_session['user_id'], $blocked_id]);
+            if ($conv_id > 0) {
+                $pdo->prepare("UPDATE conversation_participants SET is_deleted = 1 WHERE conversation_id = ? AND user_id = ?")
+                    ->execute([$conv_id, $current_session['user_id']]);
+            }
             echo json_encode(['success' => true]);
             break;
 

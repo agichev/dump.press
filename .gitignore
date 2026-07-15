@@ -25,6 +25,9 @@ VPS.md
 
 # Бекапы
 dump.press.backup.*/
+*.tar.gz
+*.zip
+dump_prod_backup_*
 
 # Временные файлы / IDE
 *.log

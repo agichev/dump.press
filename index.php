@@ -144,9 +144,9 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
 
-    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=8" as="style">
-    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/script.js?v=8" as="script">
-    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=8">
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=16" as="style">
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/script.js?v=16" as="script">
+    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=16">
 
     <?php if ($recaptcha_enabled): ?>
     <style>.grecaptcha-badge{visibility:hidden!important;opacity:0!important}</style>
@@ -198,6 +198,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
         const RECAPTCHA_ENABLED = <?php echo $recaptcha_enabled ? 'true' : 'false'; ?>;
         window.RecaptchaSiteKey = '<?php echo htmlspecialchars($recaptcha_site_key, ENT_QUOTES | ENT_HTML5, 'UTF-8'); ?>';
         const TURNSTILE_SITE_KEY = '<?php echo htmlspecialchars($turnstile_site_key, ENT_QUOTES | ENT_HTML5, 'UTF-8'); ?>';
+        const WS_URL = '<?php echo htmlspecialchars($GLOBALS['WS_URL'] ?? 'ws://localhost:9090', ENT_QUOTES | ENT_HTML5, 'UTF-8'); ?>';
 
         const getProxyUrl = (url) => {
             if (!url) return '';
@@ -273,6 +274,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
         </div>
         <div class="flex gap-2">
             <button onclick="openSearch()" class="icon-btn"><i class="ph ph-magnifying-glass"></i></button>
+            <button onclick="navigate('/messages')" id="navMsgBtn" class="icon-btn hidden" style="position:relative;"><i class="ph ph-chat-circle"></i><span id="msgBadgeTop" class="notif-badge hidden">0</span></button>
             <button onclick="navigate('/notifications')" id="navNotifBtn" class="icon-btn hidden" style="position:relative;"><i class="ph ph-bell"></i><span id="notifBadge" class="notif-badge hidden">0</span></button>
             <button onclick="navigate('/create')" id="navCreateBtn" class="icon-btn"><i class="ph ph-plus"></i></button>
             <button id="navUserBtn" class="icon-btn"><i class="ph ph-user"></i></button>
@@ -407,6 +409,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
             <div class="settings-tabs">
                 <button class="settings-tab active" id="tabBtnProfile" onclick="switchSettingsTab('profile')">Профиль</button>
                 <button class="settings-tab" id="tabBtnAccount" onclick="switchSettingsTab('account')">Аккаунт</button>
+                <button class="settings-tab" id="tabBtnPrivacy" onclick="switchSettingsTab('privacy')">Приватность</button>
                 <button class="settings-tab" id="tabBtnSessions" onclick="switchSettingsTab('sessions')">Сессии</button>
             </div>
 
@@ -462,6 +465,39 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
 
                         <button type="submit" class="vc-btn mb-2">Сохранить изменения</button>
                     </form>
+                </div>
+
+                <div id="panePrivacy" class="hidden smooth-fade-in">
+                    <div class="flex justify-between items-center mb-4" style="background: var(--surface-elevated); border-radius: var(--radius-md); padding: 0.75rem 1rem;">
+                        <div>
+                            <div class="font-bold" style="font-size:0.95rem;">Поиск в Dump</div>
+                            <div class="text-xs text-muted mt-1">Другие пользователи могут найти меня в поиске</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="privacySearchable" checked onchange="togglePrivacySearchable(this)">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="flex justify-between items-center mb-4" style="background: var(--surface-elevated); border-radius: var(--radius-md); padding: 0.75rem 1rem;">
+                        <div>
+                            <div class="font-bold" style="font-size:0.95rem;">Личные сообщения</div>
+                            <div class="text-xs text-muted mt-1">Пользователи могут писать мне первыми</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="privacyMessages" checked onchange="togglePrivacyMessages(this)">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="flex justify-between items-center mb-4" style="background: var(--surface-elevated); border-radius: var(--radius-md); padding: 0.75rem 1rem;">
+                        <div>
+                            <div class="font-bold" style="font-size:0.95rem;">Функции бетатестирования</div>
+                            <div class="text-xs text-muted mt-1">Доступ к новым функциям до официального релиза</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="privacyBeta" onchange="togglePrivacyBeta(this)">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
                 </div>
 
                 <div id="paneSessions" class="hidden smooth-fade-in">
@@ -682,12 +718,77 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
         </div>
     </div>
 
+    <div id="messengerView" class="view-section">
+        <div class="messenger-container">
+        <div id="convListSection" class="msgr-section">
+            <div class="msgr-header">
+                <h2 class="font-bold" style="font-size:1.3rem;">Сообщения</h2>
+                <button class="icon-btn-sm" onclick="openNewChat()" aria-label="Новый чат"><i class="ph ph-plus"></i></button>
+            </div>
+            <div id="convListItems" class="msgr-list"></div>
+        </div>
+        <div id="chatSection" class="msgr-section hidden">
+            <div class="chat-card">
+                <div class="chat-card-header">
+                    <button class="chat-back-btn-msg" onclick="showConvList()" aria-label="Назад"><i class="ph ph-arrow-left"></i></button>
+                    <img id="chatPartnerAvatar" src="" class="chat-partner-avatar" alt="" style="cursor:pointer;" onclick="showConvContextMenu(getCurrentConvId(), event)" oncontextmenu="event.preventDefault(); showConvContextMenu(getCurrentConvId(), event)">
+                    <div style="flex:1;min-width:0;cursor:pointer;" onclick="showConvContextMenu(getCurrentConvId(), event)" oncontextmenu="event.preventDefault(); showConvContextMenu(getCurrentConvId(), event)">
+                        <span id="chatPartnerName" class="font-bold" style="display:block;font-size:0.95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+                    </div>
+                </div>
+                <div id="chatMessages" class="chat-card-messages">
+                    <div id="chatLoadMore" class="chat-load-more hidden"><button class="load-more-btn" onclick="loadMoreMessages()">Загрузить ещё</button></div>
+                </div>
+                <div id="replyIndicator" class="reply-indicator hidden">
+                    <div class="reply-info"><i class="ph ph-arrow-u-down-left"></i><span>Ответ <b id="replyToName"></b></span></div>
+                    <button onclick="cancelReply()" aria-label="Отменить"><i class="ph ph-x"></i></button>
+                </div>
+                <div id="editIndicator" class="reply-indicator hidden" style="border-left-color:var(--warning);">
+                    <div class="reply-info"><i class="ph ph-pencil"></i><span>Редактирование</span></div>
+                    <button onclick="cancelEdit()" aria-label="Отменить"><i class="ph ph-x"></i></button>
+                </div>
+                <div id="typingIndicator" class="typing-indicator hidden"><span id="typingText"></span></div>
+                <div id="emojiPicker" class="emoji-picker hidden">
+                    <div class="emoji-grid" id="emojiGrid"></div>
+                </div>
+                <form id="chatForm" class="chat-input-area" onsubmit="sendChatMessage(event)" novalidate>
+                    <button type="button" class="chat-attach-btn" onclick="openChatEmoji()" aria-label="Эмодзи"><i class="ph ph-smiley"></i></button>
+                    <textarea id="chatInput" class="chat-input" placeholder="Сообщение..." rows="1" enterkeyhint="send" oninput="resizeTextarea(this); onChatTyping();" onkeydown="chatInputKeydown(event)"></textarea>
+                    <button type="submit" id="chatSendBtn" class="chat-send-btn" aria-label="Отправить"><i class="ph-fill ph-paper-plane-right"></i></button>
+                </form>
+            </div>
+        </div>
+        </div>
+    </div>
+
+    <div id="newChatModal" class="modal-overlay modal-bottom" onclick="closeModalOnOutsideClick(event, 'newChatModal')">
+        <div class="modal-content" style="max-height:85vh;">
+            <div class="flex justify-between items-center" style="padding:1.25rem 1.5rem; border-bottom:1px solid var(--surface-hover);">
+                <h3 class="font-bold" style="font-size:1.1rem;">Новый чат</h3>
+                <button type="button" onclick="closeModal('newChatModal')" style="color:var(--text-muted);"><i class="ph ph-caret-down" style="font-size:1.4rem;"></i></button>
+            </div>
+            <div class="p-4 border-b border-surface-hover">
+                <div class="input-group mb-0">
+                    <input type="text" id="newChatSearch" class="vc-input" placeholder=" " oninput="debounceNewChatSearch()">
+                    <label for="newChatSearch" class="vc-label">Поиск пользователей...</label>
+                </div>
+            </div>
+            <div id="newChatResults" class="overflow-y-auto" style="flex:1;padding:0.5rem 1rem 1.5rem;">
+                <div class="empty-state"><i class="ph ph-magnifying-glass"></i><p>Начните вводить имя</p></div>
+            </div>
+        </div>
+    </div>
+
     <div id="bottomNav" class="bottom-nav">
         <button class="bottom-nav-item active" data-nav="feed" onclick="bottomNavClick('feed')">
             <i class="ph ph-house"></i>
         </button>
         <button class="bottom-nav-item" data-nav="search" onclick="bottomNavClick('search')">
             <i class="ph ph-magnifying-glass"></i>
+        </button>
+        <button class="bottom-nav-item" data-nav="messenger" onclick="bottomNavClick('messenger')">
+            <i class="ph ph-chat-circle"></i>
+            <span id="msgBadgeBottom" class="notif-badge-bottom hidden">0</span>
         </button>
         <button class="bottom-nav-item" data-nav="create" onclick="bottomNavClick('create')">
             <i class="ph ph-plus"></i>
@@ -735,7 +836,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
             </form>
         </div>
     </div>
-    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=8"></script>
+    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=16"></script>
 
     <?php if ($is_mobile): ?>
     <style>
@@ -858,6 +959,6 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
             y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
         })(window, document, "clarity", "script", "xj975d6qmr");
     </script>
-    <audio id="notifAudio" preload="auto" src="/notification.wav" volume="0.5"></audio>
+    <audio id="notifAudio" preload="auto" src="<?= htmlspecialchars($asset_base) ?>/notification.mp3" volume="0.5"></audio>
 </body>
 </html>

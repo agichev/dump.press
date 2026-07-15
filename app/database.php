@@ -118,6 +118,89 @@ try {
     try { $pdo->exec("ALTER TABLE users ADD COLUMN tfa_method VARCHAR(20) DEFAULT ''"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE users ADD COLUMN tfa_secret VARCHAR(255) DEFAULT ''"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE users ADD COLUMN bookmarks_public TINYINT(1) DEFAULT 1"); } catch (PDOException $e) {}
+    try { $pdo->exec("ALTER TABLE users ADD COLUMN privacy_searchable TINYINT(1) DEFAULT 1"); } catch (PDOException $e) {}
+    try { $pdo->exec("ALTER TABLE users ADD COLUMN privacy_messages TINYINT(1) DEFAULT 1"); } catch (PDOException $e) {}
+    try { $pdo->exec("ALTER TABLE users ADD COLUMN privacy_beta TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {}
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS conversations (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS conversation_participants (
+            conversation_id INT NOT NULL,
+            user_id INT NOT NULL,
+            last_read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            is_deleted TINYINT(1) DEFAULT 0,
+            PRIMARY KEY (conversation_id, user_id),
+            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS messages (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            conversation_id INT NOT NULL,
+            sender_id INT NOT NULL,
+            content TEXT,
+            reply_to BIGINT DEFAULT NULL,
+            edited_at TIMESTAMP NULL DEFAULT NULL,
+            deleted_at TIMESTAMP NULL DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+            FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (reply_to) REFERENCES messages(id) ON DELETE SET NULL,
+            INDEX idx_conv_created (conversation_id, created_at),
+            INDEX idx_conv_sender (conversation_id, sender_id)
+        );
+        CREATE TABLE IF NOT EXISTS message_status (
+            message_id BIGINT NOT NULL,
+            user_id INT NOT NULL,
+            status ENUM('sent','delivered','read') DEFAULT 'sent',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (message_id, user_id),
+            FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS signal_prekeys (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            key_id INT NOT NULL,
+            public_key TEXT NOT NULL,
+            signature TEXT,
+            is_signed TINYINT(1) DEFAULT 0,
+            is_used TINYINT(1) DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uk_user_key (user_id, key_id),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS signal_sessions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            device_id VARCHAR(64) DEFAULT 'main',
+            identity_private TEXT,
+            identity_public TEXT,
+            registration_id VARCHAR(64) DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uk_user_device (user_id, device_id),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS signal_ratchets (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            conversation_id INT NOT NULL,
+            user_id INT NOT NULL,
+            ratchet_data TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uk_conv_user (conversation_id, user_id),
+            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+    ");
+    try { $pdo->exec("CREATE INDEX idx_msgs_conv ON messages(conversation_id, created_at)"); } catch (PDOException $e) {}
+    try { $pdo->exec("CREATE INDEX idx_msgs_sender ON messages(sender_id)"); } catch (PDOException $e) {}
+    try { $pdo->exec("CREATE INDEX idx_cp_user ON conversation_participants(user_id)"); } catch (PDOException $e) {}
+    try { $pdo->exec("CREATE INDEX idx_cp_conv ON conversation_participants(conversation_id)"); } catch (PDOException $e) {}
+    try { $pdo->exec("CREATE INDEX idx_ms_status ON message_status(message_id)"); } catch (PDOException $e) {}
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS temp_auth (
@@ -157,6 +240,18 @@ try {
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             UNIQUE KEY (token)
+        );
+    ");
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS blocked_users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            blocker_id INT NOT NULL,
+            blocked_id INT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (blocker_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (blocked_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE KEY unique_block (blocker_id, blocked_id)
         );
     ");
 
