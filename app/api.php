@@ -1493,7 +1493,7 @@ try {
             $stmt_check = $pdo->prepare("SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?");
             $stmt_check->execute([$conv_id, $current_session['user_id']]);
             if (!$stmt_check->fetch()) throw new Exception('Доступ запрещен');
-            $pdo->prepare("UPDATE messages SET deleted_at = NOW() WHERE conversation_id = ?")->execute([$conv_id]);
+            $pdo->prepare("DELETE FROM messages WHERE conversation_id = ?")->execute([$conv_id]);
             echo json_encode(['success' => true]);
             break;
 

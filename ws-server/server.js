@@ -202,10 +202,10 @@ async function getOrCreateConversation(db, userId1, userId2) {
 }
 
 async function deleteMessage(db, messageId, userId) {
-  await db.execute(
-    'UPDATE messages SET deleted_at = NOW() WHERE id = ? AND sender_id = ?',
-    [messageId, userId]
-  );
+    await db.execute(
+        'DELETE FROM messages WHERE id = ? AND sender_id = ?',
+        [messageId, userId]
+    );
 }
 
 async function editMessage(db, messageId, userId, content) {
@@ -224,11 +224,8 @@ async function leaveConversation(db, conversationId, userId) {
 
 async function clearConversation(db, conversationId, userId) {
   await db.execute(
-    `UPDATE messages m
-     JOIN conversation_participants cp ON m.conversation_id = cp.conversation_id
-     SET m.deleted_at = NOW()
-     WHERE m.conversation_id = ? AND cp.user_id = ?`,
-    [conversationId, userId]
+    'DELETE FROM messages WHERE conversation_id = ?',
+    [conversationId]
   );
 }
 
