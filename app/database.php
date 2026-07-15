@@ -256,6 +256,20 @@ try {
         );
     ");
 
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS pending_messages (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            conversation_id INT NOT NULL,
+            sender_id INT NOT NULL,
+            content TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+            FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+    ");
+
+    try { $pdo->exec("ALTER TABLE conversation_participants ADD COLUMN muted TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {}
+
     $pdo->exec("UPDATE posts SET slug = SUBSTRING(MD5(RAND()), 1, 10) WHERE slug IS NULL OR slug = ''");
 
 } catch (PDOException $e) {

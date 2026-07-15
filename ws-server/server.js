@@ -106,7 +106,7 @@ async function getConversations(db, userId) {
             (SELECT m.created_at FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message_at,
             (SELECT m.sender_id FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_sender_id,
             (SELECT COUNT(*) FROM message_status ms JOIN messages m ON ms.message_id = m.id WHERE m.conversation_id = c.id AND ms.user_id = ? AND ms.status IN ('sent','delivered')) as unread_count,
-            cp.last_read_at
+            cp.last_read_at, cp.muted
      FROM conversations c
      JOIN conversation_participants cp ON c.id = cp.conversation_id AND cp.user_id = ?
      WHERE cp.is_deleted = 0
@@ -124,16 +124,7 @@ async function getConversations(db, userId) {
     conv.participants = participants;
   }
 
-  const [blockedRows] = await db.execute(
-    'SELECT blocked_id FROM blocked_users WHERE blocker_id = ?',
-    [userId]
-  );
-  const blockedIds = new Set(blockedRows.map(r => r.blocked_id));
-
-  return rows.filter(conv => {
-    if (!conv.participants || conv.participants.length === 0) return true;
-    return !conv.participants.some(p => blockedIds.has(p.id));
-  });
+  return rows;
 }
 
 async function getMessages(db, conversationId, userId, before = null, limit = 50) {
@@ -253,6 +244,47 @@ async function isBlocked(db, userId1, userId2) {
   return rows.length > 0;
 }
 
+async function processPendingForUser(db, userId) {
+  const [pending] = await db.execute(
+    `SELECT pm.id, pm.conversation_id, pm.sender_id, pm.content
+     FROM pending_messages pm
+     JOIN conversation_participants cp ON pm.conversation_id = cp.conversation_id
+     WHERE cp.user_id = ? AND pm.sender_id != ?`,
+    [userId, userId]
+  );
+  if (!pending.length) return;
+
+  for (const pm of pending) {
+    const [result] = await db.execute(
+      'INSERT INTO messages (conversation_id, sender_id, content) VALUES (?, ?, ?)',
+      [pm.conversation_id, pm.sender_id, pm.content]
+    );
+    const msgId = result.insertId;
+    const [participants] = await db.execute(
+      'SELECT user_id FROM conversation_participants WHERE conversation_id = ? AND user_id != ?',
+      [pm.conversation_id, pm.sender_id]
+    );
+    for (const p of participants) {
+      await db.execute('INSERT INTO message_status (message_id, user_id, status) VALUES (?, ?, ?)',
+        [msgId, p.user_id, 'sent']);
+    }
+    const [msgRows] = await db.execute(
+      `SELECT m.*, u.username, u.avatar_url FROM messages m
+       JOIN users u ON m.sender_id = u.id WHERE m.id = ?`, [msgId]
+    );
+    if (msgRows.length) {
+      const message = msgRows[0];
+      message.my_status = 'sent';
+      const delivered = await sendToUser(userId, { type: 'new_message', message });
+      if (delivered) await markDelivered(db, msgId, userId);
+      await sendToUser(pm.sender_id, { type: 'new_message', message });
+    }
+  }
+
+  const ids = pending.map(p => p.id);
+  await db.execute('DELETE FROM pending_messages WHERE id IN (' + ids.join(',') + ')');
+}
+
 const wss = new WebSocketServer({ port: WS_PORT });
 
 console.log(`WS server running on port ${WS_PORT}`);
@@ -290,6 +322,8 @@ wss.on('connection', (ws, req) => {
 
         const convs = await getConversations(db, user.id);
         send({ type: 'conversations', conversations: convs });
+
+        processPendingForUser(db, user.id);
 
         return;
       }
@@ -332,8 +366,6 @@ wss.on('connection', (ws, req) => {
 
           let anyDelivered = false;
           for (const p of participants) {
-            const [blk] = await db.execute('SELECT 1 FROM blocked_users WHERE blocker_id = ? AND blocked_id = ? LIMIT 1', [p.user_id, user.id]);
-            if (blk.length > 0) continue;
             const delivered = await sendToUser(p.user_id, { type: 'new_message', message: stored });
             if (delivered) {
               await markDelivered(db, stored.id, p.user_id);
@@ -382,6 +414,7 @@ wss.on('connection', (ws, req) => {
         case 'get_conversations': {
           const convs = await getConversations(db, user.id);
           send({ type: 'conversations', conversations: convs });
+          processPendingForUser(db, user.id);
           break;
         }
 
@@ -484,6 +517,22 @@ wss.on('connection', (ws, req) => {
             [user.id, msg.user_id]
           );
           send({ type: 'user_unblocked', user_id: msg.user_id });
+          break;
+        }
+
+        case 'mute_conversation': {
+          await db.execute(
+            'UPDATE conversation_participants SET muted = 1 WHERE conversation_id = ? AND user_id = ?',
+            [msg.conversation_id, user.id]
+          );
+          break;
+        }
+
+        case 'unmute_conversation': {
+          await db.execute(
+            'UPDATE conversation_participants SET muted = 0 WHERE conversation_id = ? AND user_id = ?',
+            [msg.conversation_id, user.id]
+          );
           break;
         }
 

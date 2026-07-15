@@ -3475,14 +3475,6 @@
             }
         }
 
-        async function checkPartnerHasKeys(userId) {
-            try {
-                const res = await fetch(apiCall('signal_key') + '&user_id=' + userId);
-                const data = await res.json();
-                return data.success && data.public_key && data.public_key.length > 0;
-            } catch(e) { return false; }
-        }
-
         async function sigEncryptMessage(plaintext, convId, partnerUserId) {
             const result = await sigOutbound(convId, partnerUserId, plaintext);
             return result;
@@ -3584,7 +3576,6 @@
 
                 case 'new_message': {
                     const msg = data.message;
-                    if (msg.sender_id != currentUser.id && isUserBlocked(msg.sender_id)) break;
                     let idx = messengerConversations.findIndex(c => c.id == msg.conversation_id);
 
                     if (idx === -1 && msg.sender_id != currentUser.id) {
@@ -3616,6 +3607,14 @@
 
                     if (currentConvId == msg.conversation_id) {
                         if (!messengerMessages[currentConvId]) messengerMessages[currentConvId] = [];
+                        if (msg.sender_id == currentUser.id) {
+                            const msgs = messengerMessages[currentConvId];
+                            for (let i = msgs.length - 1; i >= 0; i--) {
+                                if (msgs[i].id < 0 && msgs[i].content === msg.content) {
+                                    msgs.splice(i, 1);
+                                }
+                            }
+                        }
                         const exists = messengerMessages[currentConvId].find(m => m.id == msg.id);
                         if (exists) {
                             if (msg.sender_id === currentUser.id && msg.content !== exists.content) {
@@ -3646,10 +3645,13 @@
                         const senderName = msg.username || 'Пользователь';
                         let preview = msg.content || '';
                         if (preview.startsWith('!sig')) preview = '🔒 Зашифрованное сообщение';
-                        const avatar = getProxyUrl(msg.avatar_url || `https://ui-avatars.com/api/?name=${senderName}&background=random`);
-                        const toastHtml = `<div style="display:flex;align-items:center;gap:8px;text-align:left;"><img src="${avatar}" style="width:22px;height:22px;border-radius:50%;object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(preview.substring(0, 40))}</span></div>`;
-                        showToast(toastHtml, true);
-                        playNotifSound();
+                        const conv = messengerConversations.find(c => c.id == msg.conversation_id);
+                        if (!conv || !conv.muted) {
+                            const avatar = getProxyUrl(msg.avatar_url || `https://ui-avatars.com/api/?name=${senderName}&background=random`);
+                            const toastHtml = `<div style="display:flex;align-items:center;gap:8px;text-align:left;"><img src="${avatar}" style="width:22px;height:22px;border-radius:50%;object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(preview.substring(0, 40))}</span></div>`;
+                            showToast(toastHtml, true);
+                            playNotifSound();
+                        }
                     }
                     break;
                 }
@@ -3926,18 +3928,16 @@
 
         function renderConvList() {
             const list = document.getElementById('convListItems');
-            const visible = messengerConversations.filter(conv => {
-                const partner = conv.participants && conv.participants[0];
-                return partner && !isUserBlocked(partner.id);
-            });
-            if (!visible.length) {
+            if (!messengerConversations.length) {
                 list.innerHTML = `<div class="empty-state"><i class="ph ph-chat-circle"></i><p>Нет диалогов</p></div>`;
                 return;
             }
 
-            list.innerHTML = visible.map(conv => {
+            list.innerHTML = messengerConversations.map(conv => {
                 const partner = conv.participants && conv.participants[0];
                 if (!partner) return '';
+                const blocked = isUserBlocked(partner.id);
+                const muted = !!conv.muted;
                 const avatar = getProxyUrl(partner.avatar_url || `https://ui-avatars.com/api/?name=${partner.username}&background=random`);
                 const lastMsg = conv.last_message || '';
                 const isMe = conv.last_sender_id == currentUser.id;
@@ -3946,12 +3946,16 @@
 
                 let preview = lastMsg;
                 if (preview.startsWith('!sig')) preview = '[Зашифрованное сообщение]';
-                return `<div class="conv-item" onclick="openConv(${conv.id})" oncontextmenu="event.preventDefault(); showConvContextMenu(${conv.id}, event)">
-                    <img src="${avatar}" class="conv-avatar" loading="lazy">
+                const blockStyle = blocked ? 'style="filter:grayscale(100%);opacity:0.5;"' : '';
+                const nameStyle = blocked ? 'style="color:var(--text-muted);"' : '';
+                return `<div class="conv-item ${blocked ? 'conv-blocked' : ''}" onclick="openConv(${conv.id})" oncontextmenu="event.preventDefault(); showConvContextMenu(${conv.id}, event)">
+                    <div style="position:relative;flex-shrink:0;">
+                        <img src="${avatar}" class="conv-avatar" loading="lazy" ${blockStyle}>
+                    </div>
                     <div class="conv-info">
                         <div class="conv-top">
-                            <span class="conv-name">${partner.username}</span>
-                            <span class="conv-time">${time}</span>
+                            <span class="conv-name" ${nameStyle}>${partner.username}${blocked ? ' (заблок.)' : ''}</span>
+                            <span class="conv-time">${muted ? '<i class="ph ph-bell-slash" style="font-size:0.7rem;margin-right:2px;"></i>' : ''}${time}</span>
                         </div>
                         <div class="conv-bottom">
                             <span class="conv-last-msg">${isMe ? 'Вы: ' : ''}${escHtml(preview.substring(0, 60))}</span>
@@ -3987,7 +3991,9 @@
             document.getElementById('convListSection').classList.add('hidden');
             document.getElementById('chatSection').classList.remove('hidden');
             document.getElementById('chatPartnerAvatar').src = avatar;
+            document.getElementById('chatPartnerAvatar').style.filter = isBlocked ? 'grayscale(100%)' : '';
             document.getElementById('chatPartnerName').textContent = isBlocked ? currentConvPartner.username + ' (заблокирован)' : currentConvPartner.username;
+            document.getElementById('chatPartnerName').style.color = isBlocked ? 'var(--text-muted)' : '';
             document.getElementById('typingIndicator').classList.add('hidden');
 
             const chatForm = document.getElementById('chatForm');
@@ -4069,13 +4075,8 @@
 
             msgs.forEach((msg) => {
                 const isMe = msg.sender_id == currentUser.id;
-                let displayContent = decryptedContents[msg.id] || msg.content || '';
+                const displayContent = decryptedContents[msg.id] || msg.content || '';
                 const isFirstOfGroup = msg.sender_id !== lastSenderId;
-
-                const isPlaintext = msg._unencrypted || (isMe && msg.content && !msg.content.startsWith('!sig'));
-                if (isPlaintext && msg.content) {
-                    displayContent += ' <span style="font-size:0.65rem;color:var(--warning);margin-left:2px;" title="Без шифрования">🔓</span>';
-                }
 
                 let statusIcon = '';
                 if (isMe) {
@@ -4176,6 +4177,16 @@
             }
         }
 
+        async function storePendingMessage(convId, content) {
+            try {
+                const fd = new FormData();
+                fd.append('conversation_id', convId);
+                fd.append('content', content);
+                fd.append('csrf_token', csrfToken);
+                await fetch(apiCall('store_pending_message'), { method: 'POST', body: fd });
+            } catch(e) {}
+        }
+
         async function sendChatMessage(e) {
             e.preventDefault();
             const input = document.getElementById('chatInput');
@@ -4192,11 +4203,6 @@
             if (captchaRequired) {
                 _pendingSpamMessage = () => sendChatMessage(e);
                 showSpamCaptcha();
-                return;
-            }
-
-            if (currentConvPartner && isUserBlocked(currentConvPartner.id)) {
-                showToast('Пользователь заблокирован');
                 return;
             }
 
@@ -4220,7 +4226,6 @@
             }
 
             const originalText = content;
-            let sentUnencrypted = false;
             if (partnerId) {
                 const encrypted = await sigEncryptMessage(content, currentConvId, partnerId);
                 if (encrypted) {
@@ -4229,32 +4234,26 @@
                     showToast('Инициализация шифрования, повторите отправку');
                     return;
                 } else {
-                    const hasKeys = await checkPartnerHasKeys(partnerId);
-                    if (!hasKeys) {
-                        sentUnencrypted = true;
-                        showToast('⚠ Собеседник ещё не настроил шифрование. Сообщение отправлено.', false);
-                    } else {
-                        const retry = await sigEncryptMessage(content, currentConvId, partnerId);
-                        if (!retry) { showToast('Нет ключей шифрования у собеседника'); return; }
-                        content = retry;
+                    await storePendingMessage(currentConvId, originalText);
+                    if (currentConvId) {
+                        if (!messengerMessages[currentConvId]) messengerMessages[currentConvId] = [];
+                        messengerMessages[currentConvId].push({
+                            id: -Date.now(),
+                            sender_id: currentUser.id,
+                            content: originalText,
+                            my_status: 'sent',
+                            created_at: new Date().toISOString(),
+                            username: currentUser.username,
+                            avatar_url: currentUser.avatar_url,
+                        });
+                        renderMessages();
+                        scrollChatDown();
                     }
+                    cancelReply();
+                    input.value = '';
+                    input.style.height = 'auto';
+                    return;
                 }
-            }
-
-            if (currentConvId) {
-                if (!messengerMessages[currentConvId]) messengerMessages[currentConvId] = [];
-                messengerMessages[currentConvId].push({
-                    id: -Date.now(),
-                    sender_id: currentUser.id,
-                    content: originalText,
-                    my_status: 'sent',
-                    created_at: new Date().toISOString(),
-                    username: currentUser.username,
-                    avatar_url: currentUser.avatar_url,
-                    _unencrypted: sentUnencrypted,
-                });
-                renderMessages();
-                scrollChatDown();
             }
 
             if (wsConnected) {
@@ -4404,9 +4403,11 @@
             if (!partner) return;
 
             const blocked = isUserBlocked(partner.id);
+            const muted = !!conv.muted;
 
             const actions = [
                 { label: 'Очистить чат', icon: 'ph-eraser', action: `clearConv(${convId})` },
+                { label: muted ? 'Включить уведомления' : 'Заглушить', icon: muted ? 'ph-bell-ringing' : 'ph-bell-slash', action: `toggleMuteConv(${convId})` },
                 { label: blocked ? 'Разблокировать' : 'Заблокировать', icon: 'ph-prohibit', action: `toggleBlockUser(${convId}, ${partner.id}, '${partner.username.replace(/'/g, "\\'")}')`, danger: !blocked },
                 { label: 'Удалить чат', icon: 'ph-trash', action: `leaveConv(${convId})`, danger: true },
             ];
@@ -4491,6 +4492,24 @@
             });
         };
 
+        window.toggleMuteConv = function(convId) {
+            const conv = messengerConversations.find(c => c.id === convId);
+            if (!conv) return;
+            const mute = !conv.muted;
+            conv.muted = mute;
+            if (wsConnected) {
+                ws.send(JSON.stringify({ type: mute ? 'mute_conversation' : 'unmute_conversation', conversation_id: convId }));
+            } else {
+                fetch(apiCall(mute ? 'mute_conversation' : 'unmute_conversation'), {
+                    method: 'POST',
+                    body: 'csrf_token=' + encodeURIComponent(csrfToken) + '&conversation_id=' + convId,
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                });
+            }
+            renderConvList();
+            showToast(mute ? 'Уведомления отключены' : 'Уведомления включены');
+        };
+
         window.toggleBlockUser = function(convId, userId, username) {
             if (isUserBlocked(userId)) {
                 showConfirm('Разблокировка', `Разблокировать ${username}?`, () => {
@@ -4522,7 +4541,9 @@
                             headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
                         }).then(() => {
                             _blockedUserIds.add(userId);
-                            if (currentConvId == convId) showConvList();
+                            if (currentConvId == convId && currentConvPartner) {
+                                openChat(messengerConversations.find(c => c.id === convId) || { id: convId, participants: [currentConvPartner] });
+                            }
                             renderConvList();
                             showToast(username + ' заблокирован(а)');
                         });

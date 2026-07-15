@@ -1080,7 +1080,7 @@ try {
                     (SELECT m.created_at FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message_at,
                     (SELECT m.sender_id FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_sender_id,
                     (SELECT COUNT(*) FROM message_status ms JOIN messages m ON ms.message_id = m.id WHERE m.conversation_id = c.id AND ms.user_id = ? AND ms.status IN ('sent','delivered')) as unread_count,
-                    cp.last_read_at
+                    cp.last_read_at, cp.muted
                 FROM conversations c
                 JOIN conversation_participants cp ON c.id = cp.conversation_id AND cp.user_id = ?
                 WHERE cp.is_deleted = 0
@@ -1532,6 +1532,44 @@ try {
             $stmt->execute([$current_session['user_id']]);
             $ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
             echo json_encode(['success' => true, 'blocked' => $ids]);
+            break;
+
+        case 'store_pending_message':
+            requireAuth();
+            $conv_id = (int)($_POST['conversation_id'] ?? 0);
+            $content = trim($_POST['content'] ?? '');
+            if (empty($content)) throw new Exception('Пустое сообщение');
+            if (mb_strlen($content) > 5000) throw new Exception('Сообщение слишком длинное');
+            $uid = (int)$current_session['user_id'];
+            $stmt_chk = $pdo->prepare("SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?");
+            $stmt_chk->execute([$conv_id, $uid]);
+            if (!$stmt_chk->fetch()) throw new Exception('Доступ запрещен');
+            $stmt_partners = $pdo->prepare("SELECT cp.user_id FROM conversation_participants cp WHERE cp.conversation_id = ? AND cp.user_id != ?");
+            $stmt_partners->execute([$conv_id, $uid]);
+            while ($partner = $stmt_partners->fetch()) {
+                $b = $pdo->prepare("SELECT 1 FROM blocked_users WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?) LIMIT 1");
+                $b->execute([$uid, $partner['user_id'], $partner['user_id'], $uid]);
+                if ($b->fetch()) throw new Exception('Пользователь заблокирован');
+            }
+            $pdo->prepare("INSERT INTO pending_messages (conversation_id, sender_id, content) VALUES (?, ?, ?)")
+                ->execute([$conv_id, $uid, $content]);
+            echo json_encode(['success' => true]);
+            break;
+
+        case 'mute_conversation':
+            requireAuth();
+            $conv_id = (int)($_POST['conversation_id'] ?? 0);
+            $pdo->prepare("UPDATE conversation_participants SET muted = 1 WHERE conversation_id = ? AND user_id = ?")
+                ->execute([$conv_id, $current_session['user_id']]);
+            echo json_encode(['success' => true]);
+            break;
+
+        case 'unmute_conversation':
+            requireAuth();
+            $conv_id = (int)($_POST['conversation_id'] ?? 0);
+            $pdo->prepare("UPDATE conversation_participants SET muted = 0 WHERE conversation_id = ? AND user_id = ?")
+                ->execute([$conv_id, $current_session['user_id']]);
+            echo json_encode(['success' => true]);
             break;
 
         /* ---------------- SITEMAP / ROBOTS ---------------- */
