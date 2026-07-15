@@ -4281,6 +4281,7 @@
                     return;
                 }
             }
+            }
 
             if (currentConvId) {
                 if (!messengerMessages[currentConvId]) messengerMessages[currentConvId] = [];
