@@ -235,7 +235,7 @@ try {
 
         case 'me':
             if ($current_session) {
-                $stmt = $pdo->prepare("SELECT id, username, email, avatar_url, bio, created_at, tfa_enabled, bookmarks_public, privacy_searchable, privacy_messages, privacy_beta FROM users WHERE id = ?");
+                $stmt = $pdo->prepare("SELECT id, username, email, avatar_url, bio, created_at, tfa_enabled, bookmarks_public, privacy_searchable, privacy_messages, privacy_beta, captcha_required FROM users WHERE id = ?");
                 $stmt->execute([$current_session['user_id']]);
                 $user = $stmt->fetch();
                 $user['username'] = htmlspecialchars($user['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -1332,13 +1332,30 @@ try {
             $reply_to = !empty($_POST['reply_to']) ? (int)$_POST['reply_to'] : null;
 
             if (empty($content)) throw new Exception('Пустое сообщение');
+            if (mb_strlen($content) > 5000) throw new Exception('Сообщение слишком длинное (максимум 5000 символов)');
+
+            $uid = (int)$current_session['user_id'];
+
+            $stmt_cap = $pdo->prepare("SELECT captcha_required FROM users WHERE id = ?");
+            $stmt_cap->execute([$uid]);
+            $cap_row = $stmt_cap->fetch();
+            if ($cap_row && !empty($cap_row['captcha_required'])) {
+                echo json_encode(['success' => false, 'require_captcha' => true, 'error' => 'Требуется прохождение капчи']);
+                exit;
+            }
+
+            if (!checkRateLimit('chat_' . $uid, 5, 10)) {
+                $pdo->prepare("UPDATE users SET captcha_required = 1 WHERE id = ?")->execute([$uid]);
+                echo json_encode(['success' => false, 'require_captcha' => true, 'error' => 'Слишком много сообщений. Пройдите проверку.']);
+                exit;
+            }
 
             $stmt_check = $pdo->prepare("SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?");
-            $stmt_check->execute([$conv_id, $current_session['user_id']]);
+            $stmt_check->execute([$conv_id, $uid]);
             if (!$stmt_check->fetch()) throw new Exception('Доступ запрещен');
 
             $stmt = $pdo->prepare("INSERT INTO messages (conversation_id, sender_id, content, reply_to) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$conv_id, $current_session['user_id'], $content, $reply_to]);
+            $stmt->execute([$conv_id, $uid, $content, $reply_to]);
             $msg_id = (int)$pdo->lastInsertId();
 
             $stmt_participants = $pdo->prepare("SELECT user_id FROM conversation_participants WHERE conversation_id = ? AND user_id != ?");
@@ -1347,7 +1364,6 @@ try {
                 $pdo->prepare("INSERT INTO message_status (message_id, user_id, status) VALUES (?, ?, 'sent')")->execute([$msg_id, $p['user_id']]);
             }
 
-            $uid = (int)$current_session['user_id'];
             $stmt_msg = $pdo->prepare("
                 SELECT m.*, u.username, u.avatar_url
                 FROM messages m JOIN users u ON m.sender_id = u.id
@@ -1375,6 +1391,32 @@ try {
             $pdo->prepare("UPDATE conversations SET updated_at = NOW() WHERE id = ?")->execute([$conv_id]);
 
             echo json_encode(['success' => true, 'message' => $message]);
+            break;
+
+        case 'check_spam_status':
+            requireAuth();
+            $uid = (int)$current_session['user_id'];
+            $stmt = $pdo->prepare("SELECT captcha_required FROM users WHERE id = ?");
+            $stmt->execute([$uid]);
+            $row = $stmt->fetch();
+            echo json_encode(['success' => true, 'captcha_required' => !empty($row['captcha_required'])]);
+            break;
+
+        case 'unlock_captcha':
+            requireAuth();
+            $uid = (int)$current_session['user_id'];
+            $turnstileToken = trim($_POST['turnstile_token'] ?? '');
+            if (!$turnstileToken) {
+                echo json_encode(['success' => false, 'error' => 'Токен капчи не предоставлен']);
+                break;
+            }
+            require_once __DIR__ . '/lib/security.php';
+            if (!verifyTurnstile($turnstileToken)) {
+                echo json_encode(['success' => false, 'error' => 'Проверка капчи не пройдена']);
+                break;
+            }
+            $pdo->prepare("UPDATE users SET captcha_required = 0 WHERE id = ?")->execute([$uid]);
+            echo json_encode(['success' => true]);
             break;
 
         case 'conversation_create':

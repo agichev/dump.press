@@ -16,6 +16,7 @@ const DB_CONFIG = {
 let pool;
 
 const clients = new Map();
+const msgTimestamps = new Map();
 
 function getDb() {
   if (!pool) {
@@ -292,6 +293,26 @@ wss.on('connection', (ws, req) => {
       switch (msg.type) {
         case 'send_message': {
           const convId = msg.conversation_id;
+
+          if (typeof msg.content === 'string' && msg.content.length > 5000) {
+            return send({ type: 'error', error: 'Сообщение слишком длинное (максимум 5000 символов)' });
+          }
+
+          const [capRows] = await db.execute('SELECT captcha_required FROM users WHERE id = ?', [user.id]);
+          if (capRows.length > 0 && capRows[0].captcha_required) {
+            return send({ type: 'require_captcha' });
+          }
+
+          const now = Date.now();
+          if (!msgTimestamps.has(user.id)) msgTimestamps.set(user.id, []);
+          const timestamps = msgTimestamps.get(user.id);
+          while (timestamps.length > 0 && timestamps[0] < now - 10000) timestamps.shift();
+          timestamps.push(now);
+          if (timestamps.length > 5) {
+            await db.execute('UPDATE users SET captcha_required = 1 WHERE id = ?', [user.id]);
+            return send({ type: 'require_captcha' });
+          }
+
           const stored = await storeMessage(db, convId, user.id, msg.content, msg.reply_to);
           if (!stored) return send({ type: 'error', error: 'Failed to store' });
 

@@ -121,6 +121,7 @@ try {
     try { $pdo->exec("ALTER TABLE users ADD COLUMN privacy_searchable TINYINT(1) DEFAULT 1"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE users ADD COLUMN privacy_messages TINYINT(1) DEFAULT 1"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE users ADD COLUMN privacy_beta TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {}
+    try { $pdo->exec("ALTER TABLE users ADD COLUMN captcha_required TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {}
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS conversations (

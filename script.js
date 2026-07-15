@@ -24,6 +24,8 @@
         let tfaSetupTempToken = '';
 
         let pendingAuth = null;
+        let captchaRequired = false;
+        let _pendingSpamMessage = null;
 
         // Mobile app detection - check for DumpApp in user agent
         const isDumpApp = navigator.userAgent.includes('DumpApp');
@@ -571,7 +573,7 @@
             if (e.key === 'Escape') {
                 const legal = document.getElementById('legalModal');
                 if (legal && legal.classList.contains('open')) { closeLegal(); return; }
-                ['postOptionsModal', 'commentsModal', 'settingsModal', 'cropModal', 'searchModal', 'passwordModal', 'confirmModal', 'textWarningModal', 'tfaSettingsModal', 'tfaLoginModal', 'turnstileModal', 'followingModal', 'newChatModal', 'emojiPicker'].forEach(id => {
+                ['postOptionsModal', 'commentsModal', 'settingsModal', 'cropModal', 'searchModal', 'passwordModal', 'confirmModal', 'textWarningModal', 'tfaSettingsModal', 'tfaLoginModal', 'turnstileModal', 'followingModal', 'newChatModal', 'emojiPicker'].filter(id => id !== 'spamCaptchaModal').forEach(id => {
                     const m = document.getElementById(id);
                     if(m && m.classList.contains('open')) closeModal(id);
                 });
@@ -740,6 +742,59 @@
                 showToast('Ошибка соединения');
             } finally {
                 if (btn) btn.textContent = origText;
+            }
+        }
+
+        function showSpamCaptcha() {
+            openModal('spamCaptchaModal', 'spamTurnstileWidget');
+            const widget = document.getElementById('spamTurnstileWidget');
+            if (!widget) return;
+            widget.innerHTML = '';
+            tryRenderSpamTurnstile(widget, 0);
+        }
+
+        function tryRenderSpamTurnstile(widget, attempt) {
+            if (!TURNSTILE_SITE_KEY) return;
+            if (window.turnstile) {
+                try {
+                    turnstile.render(widget, {
+                        sitekey: TURNSTILE_SITE_KEY,
+                        callback: function(token) {
+                            onSpamCaptchaPassed(token);
+                        }
+                    });
+                    return;
+                } catch (e) {
+                    console.warn('Spam Turnstile render failed:', e);
+                }
+            }
+            if (attempt < 20) {
+                setTimeout(() => tryRenderSpamTurnstile(widget, attempt + 1), 1000);
+            }
+        }
+
+        async function onSpamCaptchaPassed(token) {
+            try {
+                const fd = new FormData();
+                fd.append('csrf_token', csrfToken || '');
+                fd.append('turnstile_token', token);
+                const res = await fetch(apiCall('unlock_captcha'), { method: 'POST', body: fd });
+                const data = await res.json();
+                if (data.success) {
+                    captchaRequired = false;
+                    closeModal('spamCaptchaModal');
+                    if (_pendingSpamMessage) {
+                        const fn = _pendingSpamMessage;
+                        _pendingSpamMessage = null;
+                        fn();
+                    }
+                } else {
+                    showToast(data.error || 'Ошибка проверки');
+                    setTimeout(() => showSpamCaptcha(), 500);
+                }
+            } catch (e) {
+                showToast('Ошибка соединения');
+                setTimeout(() => showSpamCaptcha(), 500);
             }
         }
 
@@ -1182,9 +1237,13 @@
                 const data = await res.json();
                 csrfToken = data.csrf || '';
                 currentUser = data.user || null;
+                captchaRequired = currentUser && currentUser.captcha_required ? true : false;
                 updateDynamicIp();
             } catch (e) { showToast('Не удалось связаться с сервером'); } 
-            finally { handleRoute(); }
+            finally {
+                handleRoute();
+                if (captchaRequired) showSpamCaptcha();
+            }
         }
 
         const setFormState = (form, disabled) => {
@@ -3694,6 +3753,13 @@
                     break;
                 }
 
+                case 'require_captcha': {
+                    captchaRequired = true;
+                    _pendingSpamMessage = null;
+                    showSpamCaptcha();
+                    break;
+                }
+
                 case 'error': {
                     showToast(data.error || 'Ошибка');
                     if (currentConvId && String(currentConvId).startsWith('pending_')) {
@@ -4051,6 +4117,17 @@
             if (!currentConvId) return;
             if (String(currentConvId).startsWith('pending_')) return;
 
+            if (content.length > 5000) {
+                showToast('Сообщение слишком длинное (максимум 5000 символов)');
+                return;
+            }
+
+            if (captchaRequired) {
+                _pendingSpamMessage = () => sendChatMessage(e);
+                showSpamCaptcha();
+                return;
+            }
+
             const partnerId = currentConvPartner ? currentConvPartner.id : null;
 
             if (editMessageId) {
@@ -4122,6 +4199,10 @@
                         messengerMessages[currentConvId].push(data.message);
                         renderMessages();
                         scrollChatDown();
+                    } else if (data.require_captcha) {
+                        captchaRequired = true;
+                        _pendingSpamMessage = () => sendChatMessage(e);
+                        showSpamCaptcha();
                     } else {
                         showToast(data.error || 'Ошибка');
                     }

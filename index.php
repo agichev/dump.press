@@ -144,9 +144,9 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
 
-    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=16" as="style">
-    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/script.js?v=16" as="script">
-    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=16">
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=17" as="style">
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/script.js?v=17" as="script">
+    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=17">
 
     <?php if ($recaptcha_enabled): ?>
     <style>.grecaptcha-badge{visibility:hidden!important;opacity:0!important}</style>
@@ -637,6 +637,17 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
         </div>
     </div>
 
+    <div id="spamCaptchaModal" class="modal-overlay" style="z-index: 999; background: rgba(0,0,0,0.85); cursor: default;">
+        <div class="modal-content" style="max-width:380px; border: 2px solid var(--danger);">
+            <div class="modal-body text-center" style="padding: 2rem 1.5rem;">
+                <i class="ph ph-shield-warning" style="font-size: 3rem; color: var(--danger); display: block; margin-bottom: 1rem;"></i>
+                <h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 0.5rem;">Антиспам</h3>
+                <p class="text-muted" style="font-size: 0.9rem; margin-bottom: 1.5rem;">Вы отправляете сообщения слишком быстро. Пожалуйста, пройдите проверку, чтобы продолжить.</p>
+                <div id="spamTurnstileWidget" style="min-height:72px; display: flex; justify-content: center;"></div>
+            </div>
+        </div>
+    </div>
+
     <div id="legalModal" class="modal-overlay" onclick="if(event.target.id==='legalModal') closeLegal()">
         <div class="modal-content" style="max-width: 680px; max-height: 90vh; display:flex; flex-direction:column;">
             <div class="flex justify-between items-center" style="padding-bottom: 1rem; border-bottom: 1px solid var(--surface-hover); margin-bottom: 1rem;">
@@ -753,7 +764,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
                 </div>
                 <form id="chatForm" class="chat-input-area" onsubmit="sendChatMessage(event)" novalidate>
                     <button type="button" class="chat-attach-btn" onclick="openChatEmoji()" aria-label="Эмодзи"><i class="ph ph-smiley"></i></button>
-                    <textarea id="chatInput" class="chat-input" placeholder="Сообщение..." rows="1" enterkeyhint="send" oninput="resizeTextarea(this); onChatTyping();" onkeydown="chatInputKeydown(event)"></textarea>
+                    <textarea id="chatInput" class="chat-input" placeholder="Сообщение..." rows="1" maxlength="5000" enterkeyhint="send" oninput="resizeTextarea(this); onChatTyping();" onkeydown="chatInputKeydown(event)"></textarea>
                     <button type="submit" id="chatSendBtn" class="chat-send-btn" aria-label="Отправить"><i class="ph-fill ph-paper-plane-right"></i></button>
                 </form>
             </div>
@@ -836,7 +847,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
             </form>
         </div>
     </div>
-    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=16"></script>
+    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=17"></script>
 
     <?php if ($is_mobile): ?>
     <style>
@@ -959,6 +970,6 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
             y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
         })(window, document, "clarity", "script", "xj975d6qmr");
     </script>
-    <audio id="notifAudio" preload="auto" src="<?= htmlspecialchars($asset_base) ?>/notification.mp3" volume="0.5"></audio>
+    <audio id="notifAudio" preload="auto" src="<?= htmlspecialchars($asset_base) ?>/notification.wav" volume="0.5"></audio>
 </body>
 </html>
