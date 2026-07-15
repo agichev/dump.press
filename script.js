@@ -3644,7 +3644,7 @@
                     } else if (msg.sender_id != currentUser.id) {
                         const senderName = msg.username || 'Пользователь';
                         let preview = msg.content || '';
-                        if (preview.startsWith('!sig')) preview = '🔒 Зашифрованное сообщение';
+                        if (preview.startsWith('!sig')) preview = '<svg width="12" height="12" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:2px;"><rect x="3" y="7" width="10" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Зашифрованное сообщение';
                         const conv = messengerConversations.find(c => c.id == msg.conversation_id);
                         if (!conv || !conv.muted) {
                             const avatar = getProxyUrl(msg.avatar_url || `https://ui-avatars.com/api/?name=${senderName}&background=random`);
@@ -3945,7 +3945,7 @@
                 const time = conv.last_message_at ? timeAgo(conv.last_message_at) : '';
 
                 let preview = lastMsg;
-                if (preview.startsWith('!sig')) preview = '[Зашифрованное сообщение]';
+                if (preview.startsWith('!sig')) preview = '<svg width="11" height="11" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:1px;"><rect x="3" y="7" width="10" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Зашифровано';
                 const blockStyle = blocked ? 'style="filter:grayscale(100%);opacity:0.5;"' : '';
                 const nameStyle = blocked ? 'style="color:var(--text-muted);"' : '';
                 return `<div class="conv-item ${blocked ? 'conv-blocked' : ''}" onclick="openConv(${conv.id})" oncontextmenu="event.preventDefault(); showConvContextMenu(${conv.id}, event)">
