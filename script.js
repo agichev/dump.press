@@ -3609,11 +3609,14 @@
                         if (!messengerMessages[currentConvId]) messengerMessages[currentConvId] = [];
                         if (msg.sender_id == currentUser.id) {
                             const msgs = messengerMessages[currentConvId];
+                            let plaintext = null;
                             for (let i = msgs.length - 1; i >= 0; i--) {
-                                if (msgs[i].id < 0 && msgs[i].content === msg.content) {
+                                if (msgs[i].id < 0) {
+                                    if (msgs[i]._displayContent) plaintext = msgs[i]._displayContent;
                                     msgs.splice(i, 1);
                                 }
                             }
+                            if (plaintext) msg._displayContent = plaintext;
                         }
                         const exists = messengerMessages[currentConvId].find(m => m.id == msg.id);
                         if (exists) {
@@ -4062,11 +4065,16 @@
 
             const decryptedContents = {};
             for (const msg of msgs) {
-                if (msg.sender_id === currentUser.id || !msg.content.startsWith('!sig')) {
-                    decryptedContents[msg.id] = msg.content || '';
-                } else {
+                if (msg._displayContent) {
+                    decryptedContents[msg.id] = msg._displayContent;
+                } else if (msg.sender_id === currentUser.id && msg.content && msg.content.startsWith('!sig')) {
+                    const selfDecrypted = await sigDecryptMessage(msg.content, currentConvId, currentUser.id);
+                    decryptedContents[msg.id] = selfDecrypted || '[Зашифрованное сообщение]';
+                } else if (msg.content && msg.content.startsWith('!sig')) {
                     const partnerId = currentConvPartner ? currentConvPartner.id : msg.sender_id;
-                    decryptedContents[msg.id] = await sigDecryptMessage(msg.content || '', currentConvId, partnerId);
+                    decryptedContents[msg.id] = await sigDecryptMessage(msg.content, currentConvId, partnerId);
+                } else {
+                    decryptedContents[msg.id] = msg.content || '';
                 }
             }
 
@@ -4241,6 +4249,7 @@
                             id: -Date.now(),
                             sender_id: currentUser.id,
                             content: originalText,
+                            _displayContent: originalText,
                             my_status: 'sent',
                             created_at: new Date().toISOString(),
                             username: currentUser.username,
@@ -4254,6 +4263,22 @@
                     input.style.height = 'auto';
                     return;
                 }
+            }
+
+            if (currentConvId) {
+                if (!messengerMessages[currentConvId]) messengerMessages[currentConvId] = [];
+                messengerMessages[currentConvId].push({
+                    id: -Date.now(),
+                    sender_id: currentUser.id,
+                    content: originalText,
+                    _displayContent: originalText,
+                    my_status: 'sent',
+                    created_at: new Date().toISOString(),
+                    username: currentUser.username,
+                    avatar_url: currentUser.avatar_url,
+                });
+                renderMessages();
+                scrollChatDown();
             }
 
             if (wsConnected) {
@@ -4274,7 +4299,16 @@
                     const data = await res.json();
                     if (data.success && data.message) {
                         if (!messengerMessages[currentConvId]) messengerMessages[currentConvId] = [];
-                        messengerMessages[currentConvId].push(data.message);
+                        const msgs = messengerMessages[currentConvId];
+                        let plaintext = null;
+                        for (let i = msgs.length - 1; i >= 0; i--) {
+                            if (msgs[i].id < 0) {
+                                if (msgs[i]._displayContent) plaintext = msgs[i]._displayContent;
+                                msgs.splice(i, 1);
+                            }
+                        }
+                        if (plaintext) data.message._displayContent = plaintext;
+                        msgs.push(data.message);
                         renderMessages();
                         scrollChatDown();
                     } else if (data.require_captcha) {
