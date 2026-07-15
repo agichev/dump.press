@@ -124,7 +124,16 @@ async function getConversations(db, userId) {
     conv.participants = participants;
   }
 
-  return rows;
+  const [blockedRows] = await db.execute(
+    'SELECT blocked_id FROM blocked_users WHERE blocker_id = ?',
+    [userId]
+  );
+  const blockedIds = new Set(blockedRows.map(r => r.blocked_id));
+
+  return rows.filter(conv => {
+    if (!conv.participants || conv.participants.length === 0) return true;
+    return !conv.participants.some(p => blockedIds.has(p.id));
+  });
 }
 
 async function getMessages(db, conversationId, userId, before = null, limit = 50) {
@@ -323,6 +332,8 @@ wss.on('connection', (ws, req) => {
 
           let anyDelivered = false;
           for (const p of participants) {
+            const [blk] = await db.execute('SELECT 1 FROM blocked_users WHERE blocker_id = ? AND blocked_id = ? LIMIT 1', [p.user_id, user.id]);
+            if (blk.length > 0) continue;
             const delivered = await sendToUser(p.user_id, { type: 'new_message', message: stored });
             if (delivered) {
               await markDelivered(db, stored.id, p.user_id);
@@ -463,11 +474,16 @@ wss.on('connection', (ws, req) => {
 
         case 'block_user': {
           await blockUser(db, user.id, msg.user_id);
-          if (msg.conversation_id) {
-            await leaveConversation(db, msg.conversation_id, user.id);
-            send({ type: 'conversation_left', conversation_id: msg.conversation_id });
-          }
           send({ type: 'user_blocked', user_id: msg.user_id });
+          break;
+        }
+
+        case 'unblock_user': {
+          await db.execute(
+            'DELETE FROM blocked_users WHERE blocker_id = ? AND blocked_id = ?',
+            [user.id, msg.user_id]
+          );
+          send({ type: 'user_unblocked', user_id: msg.user_id });
           break;
         }
 

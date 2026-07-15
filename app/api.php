@@ -1354,6 +1354,14 @@ try {
             $stmt_check->execute([$conv_id, $uid]);
             if (!$stmt_check->fetch()) throw new Exception('Доступ запрещен');
 
+            $stmt_partners = $pdo->prepare("SELECT cp.user_id FROM conversation_participants cp WHERE cp.conversation_id = ? AND cp.user_id != ?");
+            $stmt_partners->execute([$conv_id, $uid]);
+            while ($partner = $stmt_partners->fetch()) {
+                $b = $pdo->prepare("SELECT 1 FROM blocked_users WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?) LIMIT 1");
+                $b->execute([$uid, $partner['user_id'], $partner['user_id'], $uid]);
+                if ($b->fetch()) throw new Exception('Пользователь заблокирован');
+            }
+
             $stmt = $pdo->prepare("INSERT INTO messages (conversation_id, sender_id, content, reply_to) VALUES (?, ?, ?, ?)");
             $stmt->execute([$conv_id, $uid, $content, $reply_to]);
             $msg_id = (int)$pdo->lastInsertId();
@@ -1429,6 +1437,10 @@ try {
             $target = $stmt->fetch();
             if (!$target) throw new Exception('Пользователь не найден');
 
+            $b = $pdo->prepare("SELECT 1 FROM blocked_users WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?) LIMIT 1");
+            $b->execute([$current_session['user_id'], $target_id, $target_id, $current_session['user_id']]);
+            if ($b->fetch()) throw new Exception('Пользователь заблокирован');
+
             $stmt = $pdo->prepare("SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?");
             $stmt->execute([$current_session['user_id'], $target_id]);
             $is_following = (bool)$stmt->fetch();
@@ -1500,15 +1512,26 @@ try {
         case 'block_user':
             requireAuth();
             $blocked_id = (int)($_POST['user_id'] ?? 0);
-            $conv_id = (int)($_POST['conversation_id'] ?? 0);
             if ($blocked_id === (int)$current_session['user_id']) throw new Exception('Нельзя заблокировать себя');
             $pdo->prepare("INSERT IGNORE INTO blocked_users (blocker_id, blocked_id) VALUES (?, ?)")
                 ->execute([$current_session['user_id'], $blocked_id]);
-            if ($conv_id > 0) {
-                $pdo->prepare("UPDATE conversation_participants SET is_deleted = 1 WHERE conversation_id = ? AND user_id = ?")
-                    ->execute([$conv_id, $current_session['user_id']]);
-            }
             echo json_encode(['success' => true]);
+            break;
+
+        case 'unblock_user':
+            requireAuth();
+            $unblock_id = (int)($_POST['user_id'] ?? 0);
+            $pdo->prepare("DELETE FROM blocked_users WHERE blocker_id = ? AND blocked_id = ?")
+                ->execute([$current_session['user_id'], $unblock_id]);
+            echo json_encode(['success' => true]);
+            break;
+
+        case 'get_blocked_users':
+            requireAuth();
+            $stmt = $pdo->prepare("SELECT blocked_id FROM blocked_users WHERE blocker_id = ?");
+            $stmt->execute([$current_session['user_id']]);
+            $ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            echo json_encode(['success' => true, 'blocked' => $ids]);
             break;
 
         /* ---------------- SITEMAP / ROBOTS ---------------- */

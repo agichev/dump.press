@@ -26,6 +26,22 @@
         let pendingAuth = null;
         let captchaRequired = false;
         let _pendingSpamMessage = null;
+        let _blockedUserIds = new Set();
+
+        async function syncBlockedUsers() {
+            try {
+                const res = await fetch(apiCall('get_blocked_users'), { headers: { 'X-CSRF': csrfToken } });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.success && data.blocked) {
+                    _blockedUserIds = new Set(data.blocked.map(Number));
+                }
+            } catch(e) {}
+        }
+
+        function isUserBlocked(userId) {
+            return _blockedUserIds.has(Number(userId));
+        }
 
         // Mobile app detection - check for DumpApp in user agent
         const isDumpApp = navigator.userAgent.includes('DumpApp');
@@ -91,10 +107,15 @@
             });
         }
 
-        const showToast = (msg) => {
+        const showToast = (msg, isHtml = false) => {
             const container = document.getElementById('toastContainer');
             const toast = document.createElement('div');
-            toast.className = 'toast'; toast.textContent = msg;
+            toast.className = 'toast';
+            if (isHtml) {
+                toast.innerHTML = msg;
+            } else {
+                toast.textContent = msg;
+            }
             container.appendChild(toast);
             let startY = 0, curY = 0, swiping = false;
             const getY = (e) => e.touches ? e.touches[0].clientY : e.clientY;
@@ -1242,6 +1263,7 @@
             } catch (e) { showToast('Не удалось связаться с сервером'); } 
             finally {
                 handleRoute();
+                if (currentUser) syncBlockedUsers();
                 if (captchaRequired) showSpamCaptcha();
             }
         }
@@ -3453,6 +3475,14 @@
             }
         }
 
+        async function checkPartnerHasKeys(userId) {
+            try {
+                const res = await fetch(apiCall('signal_key') + '&user_id=' + userId);
+                const data = await res.json();
+                return data.success && data.public_key && data.public_key.length > 0;
+            } catch(e) { return false; }
+        }
+
         async function sigEncryptMessage(plaintext, convId, partnerUserId) {
             const result = await sigOutbound(convId, partnerUserId, plaintext);
             return result;
@@ -3554,6 +3584,7 @@
 
                 case 'new_message': {
                     const msg = data.message;
+                    if (msg.sender_id != currentUser.id && isUserBlocked(msg.sender_id)) break;
                     let idx = messengerConversations.findIndex(c => c.id == msg.conversation_id);
 
                     if (idx === -1 && msg.sender_id != currentUser.id) {
@@ -3614,8 +3645,10 @@
                     } else if (msg.sender_id != currentUser.id) {
                         const senderName = msg.username || 'Пользователь';
                         let preview = msg.content || '';
-                        if (preview.startsWith('enc:')) preview = '🔒 Зашифрованное сообщение';
-                        showToast(`✉ ${senderName}: ${escHtml(preview.substring(0, 50))}`);
+                        if (preview.startsWith('!sig')) preview = '🔒 Зашифрованное сообщение';
+                        const avatar = getProxyUrl(msg.avatar_url || `https://ui-avatars.com/api/?name=${senderName}&background=random`);
+                        const toastHtml = `<div style="display:flex;align-items:center;gap:8px;text-align:left;"><img src="${avatar}" style="width:22px;height:22px;border-radius:50%;object-fit:cover;flex-shrink:0;" onerror="this.style.display='none'"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(preview.substring(0, 40))}</span></div>`;
+                        showToast(toastHtml, true);
                         playNotifSound();
                     }
                     break;
@@ -3749,7 +3782,21 @@
                 }
 
                 case 'user_blocked': {
+                    _blockedUserIds.add(Number(data.user_id));
+                    if (currentConvPartner && currentConvPartner.id == data.user_id) {
+                        openChat(messengerConversations.find(c => c.id == currentConvId) || { id: currentConvId, participants: [currentConvPartner] });
+                    }
+                    renderConvList();
                     showToast('Пользователь заблокирован');
+                    break;
+                }
+
+                case 'user_unblocked': {
+                    _blockedUserIds.delete(Number(data.user_id));
+                    if (currentConvPartner && currentConvPartner.id == data.user_id) {
+                        openChat(messengerConversations.find(c => c.id == currentConvId) || { id: currentConvId, participants: [currentConvPartner] });
+                    }
+                    renderConvList();
                     break;
                 }
 
@@ -3879,12 +3926,16 @@
 
         function renderConvList() {
             const list = document.getElementById('convListItems');
-            if (!messengerConversations.length) {
+            const visible = messengerConversations.filter(conv => {
+                const partner = conv.participants && conv.participants[0];
+                return partner && !isUserBlocked(partner.id);
+            });
+            if (!visible.length) {
                 list.innerHTML = `<div class="empty-state"><i class="ph ph-chat-circle"></i><p>Нет диалогов</p></div>`;
                 return;
             }
 
-            list.innerHTML = messengerConversations.map(conv => {
+            list.innerHTML = visible.map(conv => {
                 const partner = conv.participants && conv.participants[0];
                 if (!partner) return '';
                 const avatar = getProxyUrl(partner.avatar_url || `https://ui-avatars.com/api/?name=${partner.username}&background=random`);
@@ -3931,12 +3982,23 @@
             }
 
             const avatar = getProxyUrl(currentConvPartner.avatar_url || `https://ui-avatars.com/api/?name=${currentConvPartner.username}&background=random`);
+            const isBlocked = isUserBlocked(currentConvPartner.id);
 
             document.getElementById('convListSection').classList.add('hidden');
             document.getElementById('chatSection').classList.remove('hidden');
             document.getElementById('chatPartnerAvatar').src = avatar;
-            document.getElementById('chatPartnerName').textContent = currentConvPartner.username;
+            document.getElementById('chatPartnerName').textContent = isBlocked ? currentConvPartner.username + ' (заблокирован)' : currentConvPartner.username;
             document.getElementById('typingIndicator').classList.add('hidden');
+
+            const chatForm = document.getElementById('chatForm');
+            const blockedBanner = document.getElementById('chatBlockedBanner');
+            if (isBlocked) {
+                chatForm.style.display = 'none';
+                blockedBanner.classList.remove('hidden');
+            } else {
+                chatForm.style.display = '';
+                blockedBanner.classList.add('hidden');
+            }
 
             if (wsConnected) {
                 ws.send(JSON.stringify({ type: 'get_messages', conversation_id: conv.id }));
@@ -4007,8 +4069,13 @@
 
             msgs.forEach((msg) => {
                 const isMe = msg.sender_id == currentUser.id;
-                const displayContent = decryptedContents[msg.id] || msg.content || '';
+                let displayContent = decryptedContents[msg.id] || msg.content || '';
                 const isFirstOfGroup = msg.sender_id !== lastSenderId;
+
+                const isPlaintext = msg._unencrypted || (isMe && msg.content && !msg.content.startsWith('!sig'));
+                if (isPlaintext && msg.content) {
+                    displayContent += ' <span style="font-size:0.65rem;color:var(--warning);margin-left:2px;" title="Без шифрования">🔓</span>';
+                }
 
                 let statusIcon = '';
                 if (isMe) {
@@ -4128,6 +4195,11 @@
                 return;
             }
 
+            if (currentConvPartner && isUserBlocked(currentConvPartner.id)) {
+                showToast('Пользователь заблокирован');
+                return;
+            }
+
             const partnerId = currentConvPartner ? currentConvPartner.id : null;
 
             if (editMessageId) {
@@ -4148,31 +4220,38 @@
             }
 
             const originalText = content;
+            let sentUnencrypted = false;
             if (partnerId) {
                 const encrypted = await sigEncryptMessage(content, currentConvId, partnerId);
-                if (!encrypted) {
-                    if (!sigKeysUploaded) {
-                        showToast('Инициализация шифрования, повторите отправку');
-                        return;
+                if (encrypted) {
+                    content = encrypted;
+                } else if (!sigKeysUploaded) {
+                    showToast('Инициализация шифрования, повторите отправку');
+                    return;
+                } else {
+                    const hasKeys = await checkPartnerHasKeys(partnerId);
+                    if (!hasKeys) {
+                        sentUnencrypted = true;
+                        showToast('⚠ Собеседник ещё не настроил шифрование. Сообщение отправлено.', false);
+                    } else {
+                        const retry = await sigEncryptMessage(content, currentConvId, partnerId);
+                        if (!retry) { showToast('Нет ключей шифрования у собеседника'); return; }
+                        content = retry;
                     }
-                    const retry = await sigEncryptMessage(content, currentConvId, partnerId);
-                    if (!retry) { showToast('Нет ключей шифрования у собеседника'); return; }
-                    content = retry;
                 }
             }
 
-            const isEncrypted = content !== originalText;
-            const tempId = -Date.now();
-            if (isEncrypted && currentConvId) {
+            if (currentConvId) {
                 if (!messengerMessages[currentConvId]) messengerMessages[currentConvId] = [];
                 messengerMessages[currentConvId].push({
-                    id: tempId,
+                    id: -Date.now(),
                     sender_id: currentUser.id,
                     content: originalText,
                     my_status: 'sent',
                     created_at: new Date().toISOString(),
                     username: currentUser.username,
                     avatar_url: currentUser.avatar_url,
+                    _unencrypted: sentUnencrypted,
                 });
                 renderMessages();
                 scrollChatDown();
@@ -4324,9 +4403,11 @@
             const partner = conv.participants && conv.participants[0];
             if (!partner) return;
 
+            const blocked = isUserBlocked(partner.id);
+
             const actions = [
                 { label: 'Очистить чат', icon: 'ph-eraser', action: `clearConv(${convId})` },
-                { label: 'Заблокировать', icon: 'ph-prohibit', action: `blockConvUser(${convId}, ${partner.id})`, danger: true },
+                { label: blocked ? 'Разблокировать' : 'Заблокировать', icon: 'ph-prohibit', action: `toggleBlockUser(${convId}, ${partner.id}, '${partner.username.replace(/'/g, "\\'")}')`, danger: !blocked },
                 { label: 'Удалить чат', icon: 'ph-trash', action: `leaveConv(${convId})`, danger: true },
             ];
 
@@ -4410,24 +4491,47 @@
             });
         };
 
-        window.blockConvUser = function(convId, userId) {
-            showConfirm('Блокировка', 'Заблокировать пользователя? Вы больше не сможете общаться.', () => {
-                if (wsConnected) {
-                    ws.send(JSON.stringify({ type: 'block_user', conversation_id: convId, user_id: userId }));
-                } else {
-                    fetch(apiCall('block_user'), {
-                        method: 'POST',
-                        body: 'csrf_token=' + encodeURIComponent(csrfToken) + '&user_id=' + userId + '&conversation_id=' + convId,
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-                    }).then(() => {
-                        messengerConversations = messengerConversations.filter(c => c.id != convId);
-                        if (currentConvId == convId) showConvList();
-                        renderConvList();
-                        showToast('Пользователь заблокирован');
-                    });
-                }
-            });
-        };
+        window.toggleBlockUser = function(convId, userId, username) {
+            if (isUserBlocked(userId)) {
+                showConfirm('Разблокировка', `Разблокировать ${username}?`, () => {
+                    if (wsConnected) {
+                        ws.send(JSON.stringify({ type: 'unblock_user', user_id: userId }));
+                    } else {
+                        fetch(apiCall('unblock_user'), {
+                            method: 'POST',
+                            body: 'csrf_token=' + encodeURIComponent(csrfToken) + '&user_id=' + userId,
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                        }).then(() => {
+                            _blockedUserIds.delete(userId);
+                            showToast(username + ' разблокирован(а)');
+                            renderConvList();
+                            if (currentConvId == convId && currentConvPartner) {
+                                openChat(messengerConversations.find(c => c.id === convId) || { id: convId, participants: [currentConvPartner] });
+                            }
+                        });
+                    }
+                });
+            } else {
+                showConfirm('Блокировка', `Заблокировать ${username}? Вы больше не будете получать от него сообщения.`, () => {
+                    if (wsConnected) {
+                        ws.send(JSON.stringify({ type: 'block_user', user_id: userId }));
+                    } else {
+                        fetch(apiCall('block_user'), {
+                            method: 'POST',
+                            body: 'csrf_token=' + encodeURIComponent(csrfToken) + '&user_id=' + userId,
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                        }).then(() => {
+                            _blockedUserIds.add(userId);
+                            if (currentConvId == convId) showConvList();
+                            renderConvList();
+                            showToast(username + ' заблокирован(а)');
+                        });
+                    }
+                });
+            }
+        }
+
+        window.blockConvUser = window.toggleBlockUser;
 
         window.editMsg = function(msgId) {
             const msgs = messengerMessages[currentConvId] || [];
@@ -4525,6 +4629,11 @@
 
         async function startNewChat(userId, username, avatarUrl) {
             closeModal('newChatModal');
+
+            if (isUserBlocked(userId)) {
+                showToast('Пользователь заблокирован');
+                return;
+            }
 
             const conv = messengerConversations.find(c => {
                 return c.participants && c.participants[0] && c.participants[0].id === userId;

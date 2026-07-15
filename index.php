@@ -144,9 +144,9 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
 
-    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=17" as="style">
-    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/script.js?v=17" as="script">
-    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=17">
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=18" as="style">
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/script.js?v=18" as="script">
+    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=18">
 
     <?php if ($recaptcha_enabled): ?>
     <style>.grecaptcha-badge{visibility:hidden!important;opacity:0!important}</style>
@@ -759,6 +759,10 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
                     <button onclick="cancelEdit()" aria-label="Отменить"><i class="ph ph-x"></i></button>
                 </div>
                 <div id="typingIndicator" class="typing-indicator hidden"><span id="typingText"></span></div>
+                <div id="chatBlockedBanner" class="hidden" style="padding:1rem;text-align:center;color:var(--text-muted);border-top:1px solid var(--surface-hover);font-size:0.85rem;">
+                    <i class="ph ph-prohibit" style="font-size:1.2rem;display:block;margin-bottom:0.3rem;"></i>
+                    Пользователь заблокирован
+                </div>
                 <div id="emojiPicker" class="emoji-picker hidden">
                     <div class="emoji-grid" id="emojiGrid"></div>
                 </div>
@@ -847,7 +851,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
             </form>
         </div>
     </div>
-    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=17"></script>
+    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=18"></script>
 
     <?php if ($is_mobile): ?>
     <style>
