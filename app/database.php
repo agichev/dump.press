@@ -37,11 +37,13 @@ try {
             token VARCHAR(128) PRIMARY KEY,
             user_id INT NOT NULL,
             csrf_token VARCHAR(128) NOT NULL,
+            ws_token VARCHAR(128) NULL,
             expires_at DATETIME NOT NULL,
             user_agent VARCHAR(255) DEFAULT '',
             ip_address VARCHAR(45) DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE KEY (ws_token)
         );
         CREATE TABLE IF NOT EXISTS posts (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -122,6 +124,19 @@ try {
     try { $pdo->exec("ALTER TABLE users ADD COLUMN privacy_messages TINYINT(1) DEFAULT 1"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE users ADD COLUMN privacy_beta TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE users ADD COLUMN captcha_required TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {}
+    try { $pdo->exec("ALTER TABLE users ADD COLUMN privacy_no_ads TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {}
+    try { $pdo->exec("ALTER TABLE users ADD COLUMN email_verified TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {}
+    try { $pdo->exec("ALTER TABLE users ADD COLUMN pending_email VARCHAR(255) NULL"); } catch (PDOException $e) {}
+    try { $pdo->exec("ALTER TABLE sessions ADD COLUMN ws_token VARCHAR(128) NULL"); } catch (PDOException $e) {}
+    try { $pdo->exec("ALTER TABLE sessions ADD UNIQUE KEY (ws_token)"); } catch (PDOException $e) {}
+    try {
+        $stmt = $pdo->prepare("SELECT token FROM sessions WHERE ws_token IS NULL OR ws_token = ''");
+        $stmt->execute();
+        $upd = $pdo->prepare("UPDATE sessions SET ws_token = ? WHERE token = ?");
+        foreach ($stmt->fetchAll() as $row) {
+            $upd->execute([bin2hex(random_bytes(32)), $row['token']]);
+        }
+    } catch (PDOException $e) {}
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS conversations (
@@ -162,46 +177,24 @@ try {
             FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
-        CREATE TABLE IF NOT EXISTS signal_prekeys (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            user_id INT NOT NULL,
-            key_id INT NOT NULL,
-            public_key TEXT NOT NULL,
-            signature TEXT,
-            is_signed TINYINT(1) DEFAULT 0,
-            is_used TINYINT(1) DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uk_user_key (user_id, key_id),
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        );
-        CREATE TABLE IF NOT EXISTS signal_sessions (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            user_id INT NOT NULL,
-            device_id VARCHAR(64) DEFAULT 'main',
-            identity_private TEXT,
-            identity_public TEXT,
-            registration_id VARCHAR(64) DEFAULT '',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uk_user_device (user_id, device_id),
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        );
-        CREATE TABLE IF NOT EXISTS signal_ratchets (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            conversation_id INT NOT NULL,
-            user_id INT NOT NULL,
-            ratchet_data TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            UNIQUE KEY uk_conv_user (conversation_id, user_id),
-            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        );
     ");
     try { $pdo->exec("CREATE INDEX idx_msgs_conv ON messages(conversation_id, created_at)"); } catch (PDOException $e) {}
     try { $pdo->exec("CREATE INDEX idx_msgs_sender ON messages(sender_id)"); } catch (PDOException $e) {}
     try { $pdo->exec("CREATE INDEX idx_cp_user ON conversation_participants(user_id)"); } catch (PDOException $e) {}
     try { $pdo->exec("CREATE INDEX idx_cp_conv ON conversation_participants(conversation_id)"); } catch (PDOException $e) {}
     try { $pdo->exec("CREATE INDEX idx_ms_status ON message_status(message_id)"); } catch (PDOException $e) {}
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS gifs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            image_url TEXT NOT NULL,
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+    ");
+    try { $pdo->exec("CREATE INDEX idx_gifs_desc ON gifs(description(255))"); } catch (PDOException $e) {}
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS temp_auth (

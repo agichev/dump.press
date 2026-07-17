@@ -1,5 +1,8 @@
 const { WebSocketServer } = require('ws');
 const mysql = require('mysql2/promise');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
 const WS_PORT = process.env.WS_PORT || 9090;
 const DB_CONFIG = {
@@ -12,6 +15,56 @@ const DB_CONFIG = {
   waitForConnections: true,
   connectionLimit: 10,
 };
+
+const ENCRYPTION_KEY_FILE = process.env.ENCRYPTION_KEY_FILE || '/etc/dump.press/server.key';
+
+let encKey = null;
+
+function loadEncryptionKey() {
+  const keyPath = ENCRYPTION_KEY_FILE;
+  if (!fs.existsSync(keyPath)) {
+    console.error('ENCRYPTION KEY FILE NOT FOUND:', keyPath);
+    console.error('Generate it: php app/tools/generate-key.php');
+    process.exit(1);
+  }
+  const b64 = fs.readFileSync(keyPath, 'utf-8').trim();
+  const buf = Buffer.from(b64, 'base64');
+  if (buf.length !== 32) {
+    console.error('Encryption key must be 32 bytes (base64-decoded). Got:', buf.length);
+    process.exit(1);
+  }
+  return buf;
+}
+
+encKey = loadEncryptionKey();
+
+function encryptServer(plaintext) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', encKey, iv);
+  let encrypted = cipher.update(plaintext, 'utf-8');
+  encrypted = Buffer.concat([encrypted, cipher.final()]);
+  const tag = cipher.getAuthTag();
+  const combined = Buffer.concat([iv, tag, encrypted]);
+  return 'enc:' + combined.toString('base64');
+}
+
+function decryptServer(data) {
+  if (typeof data !== 'string' || !data.startsWith('enc:')) return data;
+  const raw = Buffer.from(data.slice(4), 'base64');
+  if (raw.length < 28) return data;
+  const iv = raw.subarray(0, 12);
+  const tag = raw.subarray(12, 28);
+  const ciphertext = raw.subarray(28);
+  try {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', encKey, iv);
+    decipher.setAuthTag(tag);
+    let decrypted = decipher.update(ciphertext);
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    return decrypted.toString('utf-8');
+  } catch (e) {
+    return data;
+  }
+}
 
 let pool;
 
@@ -26,11 +79,12 @@ function getDb() {
 }
 
 async function authenticate(db, token) {
+  // WebSocket принимает только выделенный ws_token, а не session/csrf токены.
   const [rows] = await db.execute(
     `SELECT u.id, u.username, u.avatar_url
      FROM sessions s JOIN users u ON s.user_id = u.id
-     WHERE (s.token = ? OR s.csrf_token = ?) AND s.expires_at > NOW()`,
-    [token, token]
+     WHERE s.ws_token = ? AND s.expires_at > NOW()`,
+    [token]
   );
   return rows[0] || null;
 }
@@ -49,9 +103,10 @@ async function sendToUser(userId, payload) {
 }
 
 async function storeMessage(db, conversationId, senderId, content, replyTo) {
+  const encrypted = encryptServer(content);
   const [result] = await db.execute(
     'INSERT INTO messages (conversation_id, sender_id, content, reply_to) VALUES (?, ?, ?, ?)',
-    [conversationId, senderId, content, replyTo || null]
+    [conversationId, senderId, encrypted, replyTo || null]
   );
   const messageId = result.insertId;
 
@@ -74,7 +129,15 @@ async function storeMessage(db, conversationId, senderId, content, replyTo) {
     [messageId]
   );
 
-  return msgRows[0] || null;
+  const msg = msgRows[0] || null;
+  if (msg) msg.content = content;
+
+  await db.execute(
+    'UPDATE conversations SET updated_at = NOW() WHERE id = ?',
+    [conversationId]
+  );
+
+  return msg;
 }
 
 async function markDelivered(db, messageId, userId) {
@@ -115,6 +178,7 @@ async function getConversations(db, userId) {
   );
 
   for (const conv of rows) {
+    conv.last_message = decryptServer(conv.last_message || '');
     const [participants] = await db.execute(
       `SELECT u.id, u.username, u.avatar_url
        FROM conversation_participants cp JOIN users u ON cp.user_id = u.id
@@ -129,6 +193,7 @@ async function getConversations(db, userId) {
 
 async function getMessages(db, conversationId, userId, before = null, limit = 50) {
   if (!conversationId || !userId) return [];
+  if (!await isConversationParticipant(db, conversationId, userId)) return [];
 
   let query = `
     SELECT m.id, m.sender_id, m.content, m.reply_to, m.edited_at, m.deleted_at, m.created_at,
@@ -156,6 +221,7 @@ async function getMessages(db, conversationId, userId, before = null, limit = 50
     );
 
     for (const row of rows) {
+      row.content = decryptServer(row.content || '');
       const other = statusRows.find(sr => sr.message_id === row.id && sr.user_id !== userId);
       const my = statusRows.find(sr => sr.message_id === row.id && sr.user_id === userId);
       if (row.sender_id === userId) {
@@ -209,9 +275,10 @@ async function deleteMessage(db, messageId, userId) {
 }
 
 async function editMessage(db, messageId, userId, content) {
+  const encrypted = encryptServer(content);
   await db.execute(
     'UPDATE messages SET content = ?, edited_at = NOW() WHERE id = ? AND sender_id = ?',
-    [content, messageId, userId]
+    [encrypted, messageId, userId]
   );
 }
 
@@ -223,6 +290,9 @@ async function leaveConversation(db, conversationId, userId) {
 }
 
 async function clearConversation(db, conversationId, userId) {
+  if (!await isConversationParticipant(db, conversationId, userId)) {
+    throw new Error('Access denied');
+  }
   await db.execute(
     'DELETE FROM messages WHERE conversation_id = ?',
     [conversationId]
@@ -244,6 +314,15 @@ async function isBlocked(db, userId1, userId2) {
   return rows.length > 0;
 }
 
+async function isConversationParticipant(db, conversationId, userId) {
+  if (!conversationId || !userId) return false;
+  const [rows] = await db.execute(
+    'SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ? LIMIT 1',
+    [conversationId, userId]
+  );
+  return rows.length > 0;
+}
+
 async function processPendingForUser(db, userId) {
   const [pending] = await db.execute(
     `SELECT pm.id, pm.conversation_id, pm.sender_id, pm.content
@@ -255,6 +334,7 @@ async function processPendingForUser(db, userId) {
   if (!pending.length) return;
 
   for (const pm of pending) {
+    const plainContent = decryptServer(pm.content);
     const [result] = await db.execute(
       'INSERT INTO messages (conversation_id, sender_id, content) VALUES (?, ?, ?)',
       [pm.conversation_id, pm.sender_id, pm.content]
@@ -274,6 +354,7 @@ async function processPendingForUser(db, userId) {
     );
     if (msgRows.length) {
       const message = msgRows[0];
+      message.content = plainContent;
       message.my_status = 'sent';
       const delivered = await sendToUser(userId, { type: 'new_message', message });
       if (delivered) await markDelivered(db, msgId, userId);
@@ -285,13 +366,14 @@ async function processPendingForUser(db, userId) {
   await db.execute('DELETE FROM pending_messages WHERE id IN (' + ids.join(',') + ')');
 }
 
-const wss = new WebSocketServer({ port: WS_PORT });
+const wss = new WebSocketServer({ port: WS_PORT, host: '127.0.0.1' });
 
 console.log(`WS server running on port ${WS_PORT}`);
 
 wss.on('connection', (ws, req) => {
   let user = null;
   let pingInterval = null;
+  console.log('WS client connected');
 
   const send = (payload) => {
     if (ws.readyState === 1) {
@@ -311,7 +393,8 @@ wss.on('connection', (ws, req) => {
 
     try {
       if (msg.type === 'auth') {
-        user = await authenticate(db, msg.token);
+          user = await authenticate(db, msg.token);
+          console.log('WS auth:', user ? `user ${user.id}` : 'FAILED');
         if (!user) {
           return send({ type: 'error', error: 'Invalid session' });
         }
@@ -334,6 +417,10 @@ wss.on('connection', (ws, req) => {
         case 'send_message': {
           const convId = msg.conversation_id;
 
+          if (!await isConversationParticipant(db, convId, user.id)) {
+            return send({ type: 'error', error: 'Доступ запрещен' });
+          }
+
           if (typeof msg.content === 'string' && msg.content.length > 5000) {
             return send({ type: 'error', error: 'Сообщение слишком длинное (максимум 5000 символов)' });
           }
@@ -353,6 +440,7 @@ wss.on('connection', (ws, req) => {
             return send({ type: 'require_captcha' });
           }
 
+          console.log('WS send_message conv:', convId, 'user:', user.id, 'len:', msg.content ? msg.content.length : 0);
           const stored = await storeMessage(db, convId, user.id, msg.content, msg.reply_to);
           if (!stored) return send({ type: 'error', error: 'Failed to store' });
 
@@ -379,6 +467,9 @@ wss.on('connection', (ws, req) => {
         }
 
         case 'typing': {
+          if (!await isConversationParticipant(db, msg.conversation_id, user.id)) {
+            return send({ type: 'error', error: 'Доступ запрещен' });
+          }
           const [participants] = await db.execute(
             'SELECT user_id FROM conversation_participants WHERE conversation_id = ? AND user_id != ?',
             [msg.conversation_id, user.id]
@@ -396,6 +487,10 @@ wss.on('connection', (ws, req) => {
         }
 
         case 'mark_read': {
+          if (!await isConversationParticipant(db, msg.conversation_id, user.id)) {
+            return send({ type: 'error', error: 'Доступ запрещен' });
+          }
+          console.log('WS mark_read conv:', msg.conversation_id, 'user:', user.id);
           await markRead(db, msg.conversation_id, user.id);
           const [participants] = await db.execute(
             'SELECT user_id FROM conversation_participants WHERE conversation_id = ? AND user_id != ?',
@@ -450,6 +545,9 @@ wss.on('connection', (ws, req) => {
         }
 
         case 'delete_message': {
+          if (!await isConversationParticipant(db, msg.conversation_id, user.id)) {
+            return send({ type: 'error', error: 'Доступ запрещен' });
+          }
           await deleteMessage(db, msg.message_id, user.id);
           send({ type: 'message_deleted', conversation_id: msg.conversation_id, message_id: msg.message_id });
           const [participants] = await db.execute(
@@ -467,6 +565,9 @@ wss.on('connection', (ws, req) => {
         }
 
         case 'edit_message': {
+          if (!await isConversationParticipant(db, msg.conversation_id, user.id)) {
+            return send({ type: 'error', error: 'Доступ запрещен' });
+          }
           await editMessage(db, msg.message_id, user.id, msg.content);
           const [participants] = await db.execute(
             'SELECT user_id FROM conversation_participants WHERE conversation_id = ? AND user_id != ?',
@@ -490,6 +591,9 @@ wss.on('connection', (ws, req) => {
         }
 
         case 'clear_conversation': {
+          if (!await isConversationParticipant(db, msg.conversation_id, user.id)) {
+            return send({ type: 'error', error: 'Доступ запрещен' });
+          }
           await clearConversation(db, msg.conversation_id, user.id);
           const [participants] = await db.execute(
             'SELECT user_id FROM conversation_participants WHERE conversation_id = ? AND user_id != ?',
@@ -521,6 +625,9 @@ wss.on('connection', (ws, req) => {
         }
 
         case 'mute_conversation': {
+          if (!await isConversationParticipant(db, msg.conversation_id, user.id)) {
+            return send({ type: 'error', error: 'Доступ запрещен' });
+          }
           await db.execute(
             'UPDATE conversation_participants SET muted = 1 WHERE conversation_id = ? AND user_id = ?',
             [msg.conversation_id, user.id]
@@ -529,6 +636,9 @@ wss.on('connection', (ws, req) => {
         }
 
         case 'unmute_conversation': {
+          if (!await isConversationParticipant(db, msg.conversation_id, user.id)) {
+            return send({ type: 'error', error: 'Доступ запрещен' });
+          }
           await db.execute(
             'UPDATE conversation_participants SET muted = 0 WHERE conversation_id = ? AND user_id = ?',
             [msg.conversation_id, user.id]

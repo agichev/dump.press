@@ -144,9 +144,9 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
 
-    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=26" as="style">
-    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/script.js?v=26" as="script">
-    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=26">
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=31" as="style">
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/script.js?v=31" as="script">
+    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=31">
 
     <?php if ($recaptcha_enabled): ?>
     <style>.grecaptcha-badge{visibility:hidden!important;opacity:0!important}</style>
@@ -281,6 +281,10 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
         </div>
     </div>
 
+    <a id="bannerLeft" href="https://my.govnohost.net/aff.php?aff=9" target="_blank" rel="nofollow noopener" class="left-banner">
+        <img src="/banner.jpg" alt="" width="1037" height="1517" loading="lazy">
+    </a>
+
     <div id="loginView" class="view-section auth-container flex items-center justify-center">
         <div class="auth-card">
             <div class="text-center mb-8">
@@ -321,7 +325,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
                     <label for="regEmail" class="vc-label">Ваш Email</label>
                 </div>
                 <div class="input-group">
-                    <input type="password" name="password" id="regPassword" class="vc-input" placeholder=" " required minlength="6" autocomplete="new-password">
+                    <input type="password" name="password" id="regPassword" class="vc-input" placeholder=" " required minlength="8" autocomplete="new-password">
                     <label for="regPassword" class="vc-label">Пароль</label>
                 </div>
                 <button type="submit" class="vc-btn">Создать аккаунт</button>
@@ -495,6 +499,16 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
                         </div>
                         <label class="toggle-switch">
                             <input type="checkbox" id="privacyBeta" onchange="togglePrivacyBeta(this)">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="flex justify-between items-center mb-4" style="background: var(--surface-elevated); border-radius: var(--radius-md); padding: 0.75rem 1rem;">
+                        <div>
+                            <div class="font-bold" style="font-size:0.95rem;">Не показывайте мне рекламу</div>
+                            <div class="text-xs text-muted mt-1">Скрывает рекламные баннеры на сайте</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="privacyNoAds" onchange="togglePrivacyNoAds(this)">
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
@@ -747,7 +761,9 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
                         <span id="chatPartnerName" class="font-bold" style="display:block;font-size:0.95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
                     </div>
                 </div>
-                <div id="chatMessages" class="chat-card-messages">
+                <div id="chatMessages" class="chat-card-messages" style="display:flex;flex-direction:column-reverse;overflow-y:auto;overscroll-behavior:contain;scroll-behavior:auto;">
+                    <div id="typingIndicator" class="typing-indicator hidden"><div class="typing-dots"><span></span><span></span><span></span></div><span id="typingText"></span></div>
+                    <div id="chatMessagesInner" style="display:flex;flex-direction:column-reverse;gap:2px;flex:0 0 auto;min-height:0;"></div>
                     <div id="chatLoadMore" class="chat-load-more hidden"><button class="load-more-btn" onclick="loadMoreMessages()">Загрузить ещё</button></div>
                 </div>
                 <div id="replyIndicator" class="reply-indicator hidden">
@@ -758,15 +774,26 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
                     <div class="reply-info"><i class="ph ph-pencil"></i><span>Редактирование</span></div>
                     <button onclick="cancelEdit()" aria-label="Отменить"><i class="ph ph-x"></i></button>
                 </div>
-                <div id="typingIndicator" class="typing-indicator hidden"><span id="typingText"></span></div>
                 <div id="chatBlockedBanner" class="hidden" style="padding:1rem;text-align:center;color:var(--text-muted);border-top:1px solid var(--surface-hover);font-size:0.85rem;">
                     <i class="ph ph-prohibit" style="font-size:1.2rem;display:block;margin-bottom:0.3rem;"></i>
                     Пользователь заблокирован
                 </div>
                 <div id="emojiPicker" class="emoji-picker hidden">
-                    <div class="emoji-grid" id="emojiGrid"></div>
+                    <div class="emoji-picker-tabs">
+                        <button type="button" class="emoji-tab active" onclick="switchPickerTab('emoji')" id="tabEmoji"><i class="ph ph-smiley"></i></button>
+                        <button type="button" class="emoji-tab" onclick="switchPickerTab('gif')" id="tabGif"><i class="ph ph-gif"></i></button>
+                    </div>
+                    <div class="emoji-panel" id="emojiPanel">
+                        <div class="emoji-grid" id="emojiGrid"></div>
+                    </div>
+                    <div class="emoji-panel hidden" id="gifPanel">
+                        <div class="gif-search"><input type="text" id="gifSearchInput" placeholder="Поиск GIF..." oninput="debounceGifSearch()"></div>
+                        <div class="gif-grid" id="gifGrid"></div>
+                    </div>
                 </div>
                 <form id="chatForm" class="chat-input-area" onsubmit="sendChatMessage(event)" novalidate>
+                    <input type="file" id="chatFileInput" accept="image/*" multiple style="display:none" onchange="handleChatFiles(this)">
+                    <button type="button" class="chat-attach-btn" id="chatAttachBtn" onclick="document.getElementById('chatFileInput').click()" aria-label="Прикрепить"><i class="ph ph-paperclip"></i></button>
                     <button type="button" class="chat-attach-btn" onclick="openChatEmoji()" aria-label="Эмодзи"><i class="ph ph-smiley"></i></button>
                     <textarea id="chatInput" class="chat-input" placeholder="Сообщение..." rows="1" maxlength="5000" enterkeyhint="send" oninput="resizeTextarea(this); onChatTyping();" onkeydown="chatInputKeydown(event)"></textarea>
                     <button type="submit" id="chatSendBtn" class="chat-send-btn" aria-label="Отправить"><i class="ph-fill ph-paper-plane-right"></i></button>
@@ -851,7 +878,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
             </form>
         </div>
     </div>
-    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=26"></script>
+    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=31"></script>
 
     <?php if ($is_mobile): ?>
     <style>

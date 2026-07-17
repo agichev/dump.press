@@ -1,5 +1,8 @@
         let currentUser = null;
         let csrfToken = '';
+        let wsToken = null;
+        let wsTokenExpires = 0;
+        let wsTokenPromise = null;
         let currentOpenPostId = null;
         let postCommentsCache = {};
         let floatIntervals = {};
@@ -26,6 +29,8 @@
         let pendingAuth = null;
         let captchaRequired = false;
         let _pendingSpamMessage = null;
+        let _pendingWsContent = null;
+        let _pendingWsReply = null;
         let _blockedUserIds = new Set();
 
         async function syncBlockedUsers() {
@@ -666,6 +671,23 @@
 
                         document.getElementById('tfaLoginCode').value = '';
                         openModal('tfaLoginModal', 'tfaLoginCode');
+                    } else if (data.require_email_verification) {
+                        const userCode = prompt('Мы отправили код подтверждения на ваш email. Введите 6 цифр:');
+                        if (userCode) {
+                            const vfd = new FormData();
+                            vfd.append('code', userCode);
+                            vfd.append('temp_token', data.temp_token);
+                            vfd.append('csrf_token', csrfToken || '');
+                            try {
+                                const vres = await fetch(apiCall('verify_email'), { method: 'POST', body: vfd });
+                                const vdata = await vres.json();
+                                if (vdata.success) showToast('Email подтверждён');
+                                else showToast(vdata.error || 'Неверный код');
+                            } catch (e) { showToast('Ошибка подтверждения email'); }
+                        }
+                        form.reset();
+                        await init();
+                        navigate('/', true);
                     } else {
                         form.reset();
                         await init();
@@ -751,6 +773,23 @@
                         }
                         document.getElementById('tfaLoginCode').value = '';
                         openModal('tfaLoginModal', 'tfaLoginCode');
+                    } else if (data.require_email_verification) {
+                        const userCode = prompt('Мы отправили код подтверждения на ваш email. Введите 6 цифр:');
+                        if (userCode) {
+                            const vfd = new FormData();
+                            vfd.append('code', userCode);
+                            vfd.append('temp_token', data.temp_token);
+                            vfd.append('csrf_token', csrfToken || '');
+                            try {
+                                const vres = await fetch(apiCall('verify_email'), { method: 'POST', body: vfd });
+                                const vdata = await vres.json();
+                                if (vdata.success) showToast('Email подтверждён');
+                                else showToast(vdata.error || 'Неверный код');
+                            } catch (e) { showToast('Ошибка подтверждения email'); }
+                        }
+                        form.reset();
+                        await init();
+                        navigate('/', true);
                     } else {
                         form.reset();
                         await init();
@@ -803,6 +842,7 @@
                 const data = await res.json();
                 if (data.success) {
                     captchaRequired = false;
+                    if (currentUser) currentUser.captcha_required = false;
                     closeModal('spamCaptchaModal');
                     if (_pendingSpamMessage) {
                         const fn = _pendingSpamMessage;
@@ -999,19 +1039,32 @@
             }
         }
 
-        async function disableTfa() {
+        async function disableTfa(phase = 'start', tempToken = '', code = '') {
             try {
+                const password = phase === 'start' ? prompt('Введите текущий пароль для подтверждения') : '';
+                if (phase === 'start' && password === null) return;
+
                 const fd = new FormData();
                 fd.append('csrf_token', csrfToken);
+                fd.append('current_password', phase === 'start' ? (password || '') : '');
+                if (phase === 'verify') {
+                    fd.append('temp_token', tempToken);
+                    fd.append('code', code);
+                }
                 const res = await fetch(apiCall('tfa_disable'), { method: 'POST', body: fd });
                 const data = await res.json();
-                
+
                 if (data.success) {
                     showToast('Двухфакторная аутентификация отключена');
                     document.getElementById('tfaToggle').checked = false;
                     document.getElementById('tfaSetupContainer').classList.add('hidden');
                     updateTfaBadgeStatus(false);
                     currentUser.tfa_enabled = 0;
+                } else if (data.require_code) {
+                    const userCode = prompt('Введите код из email для отключения 2FA');
+                    if (userCode) await disableTfa('verify', data.temp_token, userCode);
+                } else {
+                    showToast(data.error || 'Ошибка отключения 2FA');
                 }
             } catch(e) {
                 showToast("Ошибка отключения 2FA");
@@ -1230,27 +1283,6 @@
             }
         }
 
-        async function updateDynamicIp() {
-            if (!currentUser) return;
-            const lastUpdateKey = 'last_ip_update_' + currentUser.id;
-            const lastUpdate = localStorage.getItem(lastUpdateKey);
-            const now = Date.now();
-            
-            if (!lastUpdate || (now - parseInt(lastUpdate)) > 86400000) {
-                try {
-                    const res = await fetch('https://api.ipify.org?format=json');
-                    const data = await res.json();
-                    if (data.ip) {
-                        const fd = new FormData();
-                        fd.append('ip', data.ip);
-                        fd.append('csrf_token', csrfToken);
-                        await fetch(apiCall('update_ip'), { method: 'POST', body: fd });
-                        localStorage.setItem(lastUpdateKey, now.toString());
-                    }
-                } catch(e) {}
-            }
-        }
-
         async function init() {
             try {
                 const res = await fetch(apiCall('me'), { cache: 'no-store' });
@@ -1259,12 +1291,12 @@
                 csrfToken = data.csrf || '';
                 currentUser = data.user || null;
                 captchaRequired = currentUser && currentUser.captcha_required ? true : false;
-                updateDynamicIp();
             } catch (e) { showToast('Не удалось связаться с сервером'); } 
             finally {
                 handleRoute();
                 if (currentUser) syncBlockedUsers();
                 if (captchaRequired) showSpamCaptcha();
+                updateBannerVisibility();
             }
         }
 
@@ -1470,32 +1502,45 @@
             } finally { btn.textContent = orig; setFormState(form, false); isProcessing = false; }
         }
 
-        async function saveAccount(e) {
+        async function saveAccount(e, phase = 'start', tempToken = '', code = '') {
             e.preventDefault();
             const form = e.target;
             if (!validateFormFields(form)) return;
             if(!requireAuthClient()) return;
             if (isProcessing) return;
             isProcessing = true;
-            
+
             const btn = setFormState(form, true);
             const orig = btn.textContent;
             btn.innerHTML = 'Сохранение...';
 
             try {
+                let password = phase === 'start' ? prompt('Введите текущий пароль для подтверждения') : '';
+                if (phase === 'start' && password === null) return;
+
                 const fd = new FormData();
                 fd.append('username', document.getElementById('accUsername').value);
                 fd.append('email', document.getElementById('accEmail').value);
+                fd.append('current_password', phase === 'start' ? (password || '') : '');
                 fd.append('csrf_token', csrfToken);
+                if (phase === 'verify') {
+                    fd.append('temp_token', tempToken);
+                    fd.append('code', code);
+                }
 
                 const res = await fetch(apiCall('update_account'), { method: 'POST', body: fd });
                 const data = await res.json();
-                
+
                 if (data.success) {
                     showToast('Аккаунт сохранён');
                     await init();
-                    if(window.location.pathname.includes('profile')) openProfileData(currentUser.id); 
-                } else showToast(data.error || 'Ошибка сохранения');
+                    if(window.location.pathname.includes('profile')) openProfileData(currentUser.id);
+                } else if (data.require_email_verification) {
+                    const userCode = prompt('Введите код из нового email для подтверждения смены');
+                    if (userCode) await saveAccount(e, 'verify', data.temp_token, userCode);
+                } else {
+                    showToast(data.error || 'Ошибка сохранения');
+                }
             } finally { btn.textContent = orig; setFormState(form, false); isProcessing = false; }
         }
 
@@ -2964,535 +3009,22 @@
         let activeConvUsers = {};
         let pendingNewChatTimeout = null;
 
-        /* ═══════════════════════════════════════════════
-           Signal Protocol: X3DH + Double Ratchet
-           ═══════════════════════════════════════════════ */
 
-        const SIG_PUB_PREFIX = 'sig:';
-        const DH_PUB_PREFIX = 'dh:';
-
-        async function sigHKDF(ikm, salt, info, lengthBytes) {
-            const key = await crypto.subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits']);
-            return await crypto.subtle.deriveBits({ name: 'HKDF', salt, info, hash: 'SHA-256' }, key, lengthBytes * 8);
-        }
-
-        async function sigAesGcmEncrypt(key32, plaintext) {
-            const key = await crypto.subtle.importKey('raw', key32.slice(0, 16), { name: 'AES-GCM' }, false, ['encrypt']);
-            const iv = crypto.getRandomValues(new Uint8Array(12));
-            const enc = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(plaintext));
-            const out = new Uint8Array(iv.length + enc.byteLength);
-            out.set(iv); out.set(new Uint8Array(enc), iv.length);
-            return out;
-        }
-
-        async function sigAesGcmDecrypt(key32, data) {
-            const key = await crypto.subtle.importKey('raw', key32.slice(0, 16), { name: 'AES-GCM' }, false, ['decrypt']);
-            const iv = data.slice(0, 12);
-            const ct = data.slice(12);
-            const dec = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
-            return new TextDecoder().decode(dec);
-        }
-
-        function sigB64(buf) { return btoa(String.fromCharCode(...new Uint8Array(buf))); }
-        function sigUnb64(s) { return Uint8Array.from(atob(s), c => c.charCodeAt(0)); }
-
-        async function sigGenEcdh() {
-            return await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
-        }
-
-        async function sigGenEcdsa() {
-            return await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
-        }
-
-        async function sigEcdhPriv(b64) {
-            return await crypto.subtle.importKey('pkcs8', sigUnb64(b64), { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
-        }
-
-        async function sigEcdhPub(b64) {
-            return await crypto.subtle.importKey('spki', sigUnb64(b64), { name: 'ECDH', namedCurve: 'P-256' }, true, []);
-        }
-
-        async function sigEcdsaPub(b64) {
-            return await crypto.subtle.importKey('spki', sigUnb64(b64), { name: 'ECDSA', namedCurve: 'P-256' }, true, ['verify']);
-        }
-
-        async function sigEcdsaPriv(b64) {
-            return await crypto.subtle.importKey('pkcs8', sigUnb64(b64), { name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']);
-        }
-
-        async function sigEcdhShared(myPrivB64, theirPubB64) {
-            const priv = await sigEcdhPriv(myPrivB64);
-            const pub = await sigEcdhPub(theirPubB64);
-            return await crypto.subtle.deriveBits({ name: 'ECDH', public: pub }, priv, 256);
-        }
-
-        async function sigEcdsaSign(privB64, data) {
-            const priv = await sigEcdsaPriv(privB64);
-            return await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, priv, data);
-        }
-
-        async function sigEcdsaVerify(pubB64, data, signature) {
-            const pub = await sigEcdsaPub(pubB64);
-            return await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, pub, signature, data);
-        }
-
-        /* ─── Генерация и хранение ключей ─── */
-
-        let sigKeys = null;
-
-        async function sigGenerateKeys() {
-            const dh = await sigGenEcdh();
-            const ds = await sigGenEcdsa();
-            const spk = await sigGenEcdh();
-            const dhPub = sigB64(await crypto.subtle.exportKey('spki', dh.publicKey));
-            const dsPub = sigB64(await crypto.subtle.exportKey('spki', ds.publicKey));
-            const spkPub = sigB64(await crypto.subtle.exportKey('spki', spk.publicKey));
-            const spkSig = sigB64(await sigEcdsaSign(
-                sigB64(await crypto.subtle.exportKey('pkcs8', ds.privateKey)),
-                new TextEncoder().encode(spkPub)
-            ));
-
-            const otpks = [];
-            for (let i = 0; i < 50; i++) {
-                const k = await sigGenEcdh();
-                otpks.push({
-                    priv: sigB64(await crypto.subtle.exportKey('pkcs8', k.privateKey)),
-                    pub: sigB64(await crypto.subtle.exportKey('spki', k.publicKey)),
-                });
-            }
-
-            sigKeys = {
-                dhPriv: sigB64(await crypto.subtle.exportKey('pkcs8', dh.privateKey)),
-                dhPub,
-                dsPriv: sigB64(await crypto.subtle.exportKey('pkcs8', ds.privateKey)),
-                dsPub,
-                spkPriv: sigB64(await crypto.subtle.exportKey('pkcs8', spk.privateKey)),
-                spkPub,
-                spkSig,
-                otpks,
-                regId: Math.floor(Math.random() * 0xFFFFFF).toString(16),
-            };
-
-            localStorage.setItem('dump_signal_id', JSON.stringify(sigKeys));
-            return sigKeys;
-        }
-
-        let sigKeysUploaded = false;
-
-        async function sigInit() {
-            if (!crypto.subtle) return;
-            const stored = localStorage.getItem('dump_signal_id');
-            if (stored) {
-                sigKeys = JSON.parse(stored);
-            } else {
-                sigKeys = await sigGenerateKeys();
-            }
-            try {
-                await sigUploadKeys();
-                sigKeysUploaded = true;
-            } catch (e) {
-                setTimeout(() => sigInit(), 3000);
-            }
-        }
-
-        async function sigUploadKeys() {
-            if (!sigKeys) return;
-            try {
-                const fd = new FormData();
-                fd.append('identity_dh_pub', sigKeys.dhPub);
-                fd.append('identity_ds_pub', sigKeys.dsPub);
-                fd.append('spk_pub', sigKeys.spkPub);
-                fd.append('spk_sig', sigKeys.spkSig);
-                fd.append('otpks', JSON.stringify(sigKeys.otpks.map(k => k.pub)));
-                fd.append('csrf_token', csrfToken);
-                await fetch(apiCall('signal_upload'), { method: 'POST', body: fd });
-            } catch (e) {}
-        }
-
-        async function sigFetchBundle(userId) {
-            try {
-                const res = await fetch(apiCall('signal_bundle') + '&user_id=' + userId);
-                const data = await res.json();
-                if (!data.success) return null;
-                return {
-                    identityDhPub: data.identity_dh_pub,
-                    identityDsPub: data.identity_ds_pub,
-                    spkPub: data.spk_pub,
-                    spkSig: sigUnb64(data.spk_sig || ''),
-                    otpkPub: data.otpk_pub || null,
-                    otpkId: data.otpk_id || null,
-                };
-            } catch (e) { return null; }
-        }
-
-        async function sigVerifyBundle(bundle) {
-            if (!bundle.identityDsPub || !bundle.spkSig) return false;
-            try {
-                return await sigEcdsaVerify(
-                    bundle.identityDsPub,
-                    new TextEncoder().encode(bundle.spkPub),
-                    bundle.spkSig
-                );
-            } catch (e) { return false; }
-        }
-
-        /* ─── X3DH ─── */
-
-        async function sigX3dhInitiator(bundle) {
-            if (!sigKeys) return null;
-            const eph = await sigGenEcdh();
-            const ephPub = sigB64(await crypto.subtle.exportKey('spki', eph.publicKey));
-            const ephPriv = sigB64(await crypto.subtle.exportKey('pkcs8', eph.privateKey));
-
-            const dh1 = await sigEcdhShared(sigKeys.dhPriv, bundle.spkPub);
-            const dh2 = await sigEcdhShared(ephPriv, bundle.identityDhPub);
-            const dh3 = await sigEcdhShared(ephPriv, bundle.spkPub);
-
-            let dh4 = new ArrayBuffer(0);
-            if (bundle.otpkPub) {
-                dh4 = await sigEcdhShared(ephPriv, bundle.otpkPub);
-            }
-
-            const concat = new Uint8Array(dh1.byteLength + dh2.byteLength + dh3.byteLength + dh4.byteLength);
-            concat.set(new Uint8Array(dh1), 0);
-            concat.set(new Uint8Array(dh2), dh1.byteLength);
-            concat.set(new Uint8Array(dh3), dh1.byteLength + dh2.byteLength);
-            concat.set(new Uint8Array(dh4), dh1.byteLength + dh2.byteLength + dh3.byteLength);
-
-            const shared = await crypto.subtle.digest('SHA-256', concat);
-            const rootKey = await sigHKDF(
-                new Uint8Array(shared),
-                new TextEncoder().encode('DUMP_X3DH'),
-                new TextEncoder().encode('root'),
-                64
-            );
-
-            return {
-                rootKey: new Uint8Array(rootKey.slice(0, 32)),
-                chainKey: new Uint8Array(rootKey.slice(32, 64)),
-                ephPub,
-                ikPub: sigKeys.dhPub,
-                ratified: bundle.otpkId !== null,
-            };
-        }
-
-        async function sigX3dhRespondent(ikAPub, ekAPub, spkPub, otpkId) {
-            if (!sigKeys) return null;
-            const otpkRow = sigKeys.otpks.find(k => false);
-            let otpkPriv = null;
-            if (otpkId !== null && otpkId !== undefined) {
-                const idx = parseInt(otpkId) - 100;
-                if (idx >= 0 && idx < sigKeys.otpks.length) {
-                    otpkPriv = sigKeys.otpks[idx].priv;
-                }
-            }
-
-            const dh1 = await sigEcdhShared(sigKeys.spkPriv, ikAPub);
-            const dh2 = await sigEcdhShared(sigKeys.dhPriv, ekAPub);
-            const dh3 = await sigEcdhShared(sigKeys.spkPriv, ekAPub);
-
-            let dh4 = new ArrayBuffer(0);
-            if (otpkPriv) {
-                dh4 = await sigEcdhShared(otpkPriv, ekAPub);
-            }
-
-            const concat = new Uint8Array(dh1.byteLength + dh2.byteLength + dh3.byteLength + dh4.byteLength);
-            concat.set(new Uint8Array(dh1), 0);
-            concat.set(new Uint8Array(dh2), dh1.byteLength);
-            concat.set(new Uint8Array(dh3), dh1.byteLength + dh2.byteLength);
-            concat.set(new Uint8Array(dh4), dh1.byteLength + dh2.byteLength + dh3.byteLength);
-
-            const shared = await crypto.subtle.digest('SHA-256', concat);
-            const rootKey = await sigHKDF(
-                new Uint8Array(shared),
-                new TextEncoder().encode('DUMP_X3DH'),
-                new TextEncoder().encode('root'),
-                64
-            );
-
-            return {
-                rootKey: new Uint8Array(rootKey.slice(0, 32)),
-                chainKey: new Uint8Array(rootKey.slice(32, 64)),
-            };
-        }
-
-        /* ─── Double Ratchet ─── */
-
-        function sigRatchetState(convId) {
-            const raw = localStorage.getItem('dr_' + convId);
-            if (raw) {
-                try { return JSON.parse(raw); } catch(e) {}
-            }
-            return null;
-        }
-
-        function sigSaveRatchet(convId, state) {
-            localStorage.setItem('dr_' + convId, JSON.stringify(state));
-        }
-
-         function sigRatchetInit(convId, rootKey32, chainKey32, ourPub, theirPub, initIkPub, initEkPub) {
-             const state = {
-                 RK: Array.from(rootKey32),
-                 CKs: Array.from(chainKey32),
-                 CKr: null,
-                 DHRsPriv: null,
-                 DHRsPub: ourPub,
-                 DHRrPub: theirPub,
-                 Ns: 0, Nr: 0, PNs: 0,
-                 MKSkipped: {},
-                 initIkPub: initIkPub || null,
-                 initEkPub: initEkPub || null,
-             };
-             sigSaveRatchet(convId, state);
-             return state;
-         }
-
-        async function sigRatchetEncrypt(convId, plaintext) {
-            let state = sigRatchetState(convId);
-            if (!state) return null;
-            if (!state.CKs) {
-                await sigRatchetDh(state, state.DHRrPub);
-                state = sigRatchetState(convId);
-                if (!state || !state.CKs) return null;
-            }
-
-            const salt = new TextEncoder().encode('DUMP_SIG');
-            const mkBytes = await sigHKDF(
-                new Uint8Array(state.CKs),
-                salt,
-                new TextEncoder().encode('mk'),
-                32
-            );
-            state.Ns++;
-
-            const mk = new Uint8Array(mkBytes);
-            const cipher = await sigAesGcmEncrypt(mk, plaintext);
-            const header = state.DHRsPub;
-
-            const nextBytes = await sigHKDF(
-                new Uint8Array(state.CKs),
-                salt,
-                new TextEncoder().encode('ck'),
-                32
-            );
-            state.CKs = Array.from(new Uint8Array(nextBytes));
-
-            sigSaveRatchet(convId, state);
-            return { header, cipher: sigB64(cipher) };
-        }
-
-        async function sigRatchetDecrypt(convId, theirPubB64, cipherB64) {
-            const state = sigRatchetState(convId);
-            if (!state) return null;
-
-            const cipherData = sigUnb64(cipherB64);
-
-            if (theirPubB64 !== state.DHRrPub) {
-                await sigRatchetDh(state, theirPubB64);
-            }
-
-            if (!state.CKr) return null;
-
-            const salt = new TextEncoder().encode('DUMP_SIG');
-            const mkBytes = await sigHKDF(
-                new Uint8Array(state.CKr),
-                salt,
-                new TextEncoder().encode('mk'),
-                32
-            );
-            state.Nr++;
-
-            const mk = new Uint8Array(mkBytes);
-            let plaintext;
-            try {
-                plaintext = await sigAesGcmDecrypt(mk, cipherData);
-            } catch (e) {
-                return null;
-            }
-
-            const nextBytes = await sigHKDF(
-                new Uint8Array(state.CKr),
-                salt,
-                new TextEncoder().encode('ck'),
-                32
-            );
-            state.CKr = Array.from(new Uint8Array(nextBytes));
-
-            sigSaveRatchet(convId, state);
-            return plaintext;
-        }
-
-        async function sigRatchetDh(state, theirPubB64) {
-            const ourPriv = state.DHRsPriv || sigKeys.spkPriv || sigKeys.dhPriv;
-            const sharedBytes = new Uint8Array(shared);
-
-            const rkInfo = new TextEncoder().encode('dh_ratchet');
-            const rkResult = await sigHKDF(
-                sharedBytes,
-                new TextEncoder().encode('DUMP_RK'),
-                rkInfo,
-                64
-            );
-
-            state.RK = Array.from(new Uint8Array(rkResult.slice(0, 32)));
-            state.CKr = Array.from(new Uint8Array(rkResult.slice(32, 64)));
-
-            state.PNs = state.Ns;
-            state.Ns = 0;
-            state.Nr = 0;
-
-            const newDh = await sigGenEcdh();
-            state.DHRsPriv = sigB64(await crypto.subtle.exportKey('pkcs8', newDh.privateKey));
-            state.DHRsPub = sigB64(await crypto.subtle.exportKey('spki', newDh.publicKey));
-            state.DHRrPub = theirPubB64;
-
-            const shared2 = await sigEcdhShared(state.DHRsPriv, state.DHRrPub);
-            const rkResult2 = await sigHKDF(
-                new Uint8Array(shared2),
-                new TextEncoder().encode('DUMP_RK'),
-                rkInfo,
-                64
-            );
-
-            state.RK = Array.from(new Uint8Array(rkResult2.slice(0, 32)));
-            state.CKs = Array.from(new Uint8Array(rkResult2.slice(32, 64)));
-        }
-
-        /* ─── High-level messenger integration ─── */
-
-        const sigConvState = {};
-
-        let sigPendingInbound = {};
-
-        async function sigEnsureConv(convId, partnerUserId) {
-            if (sigConvState[convId]) return true;
-            const state = sigRatchetState(convId);
-            if (state) { sigConvState[convId] = true; return true; }
-
-            if (sigPendingInbound[convId]) return false;
-            sigPendingInbound[convId] = true;
-
-            const myDhPub = sigKeys ? sigKeys.dhPub : null;
-            if (!myDhPub) { delete sigPendingInbound[convId]; return false; }
-
-            const bundle = await sigFetchBundle(partnerUserId);
-            if (!bundle || !bundle.identityDhPub) { delete sigPendingInbound[convId]; return false; }
-
-            const verified = await sigVerifyBundle(bundle);
-            if (!verified) console.warn('SPK signature verification failed');
-
-            const x3dh = await sigX3dhInitiator(bundle);
-            if (!x3dh) { delete sigPendingInbound[convId]; return false; }
-
-            sigRatchetInit(convId, x3dh.rootKey, x3dh.chainKey, x3dh.ephPub, bundle.spkPub, x3dh.ikPub, x3dh.ephPub);
-            sigConvState[convId] = true;
-            sigPendingInbound[convId] = false;
-
-            if (bundle.otpkId !== null) {
-                try {
-                    const fd = new FormData();
-                    fd.append('otpk_id', bundle.otpkId);
-                    fd.append('csrf_token', csrfToken);
-                    await fetch(apiCall('signal_consume'), { method: 'POST', body: fd });
-                } catch (e) {}
-            }
-
-            return true;
-        }
-
-        async function sigEnsureConvRespondent(convId, partnerUserId, ikAPub, ekAPub, otpkId, theirRatchetPub) {
-            if (sigConvState[convId]) return true;
-            const state = sigRatchetState(convId);
-            if (state) { sigConvState[convId] = true; return true; }
-
-            const bundle = await sigFetchBundle(partnerUserId);
-            if (!bundle || !bundle.spkPub) return false;
-
-            const x3dh = await sigX3dhRespondent(ikAPub, ekAPub, bundle.spkPub, otpkId);
-            if (!x3dh) return false;
-
-            const rs = {
-                RK: Array.from(x3dh.rootKey),
-                CKs: null,
-                CKr: Array.from(x3dh.chainKey),
-                DHRsPriv: null,
-                DHRsPub: sigKeys.dhPub,
-                DHRrPub: theirRatchetPub,
-                Ns: 0, Nr: 0, PNs: 0,
-                MKSkipped: {},
-                initIkPub: null,
-                initEkPub: null,
-            };
-            sigSaveRatchet(convId, rs);
-            sigConvState[convId] = true;
-            return true;
-        }
-
-        const sigFirstMsgCache = {};
-
-        async function sigOutbound(convId, partnerUserId, plaintext) {
-            if (!sigKeys) return null;
-            const isFirst = !sigConvState[convId] && !sigRatchetState(convId);
-            const ready = await sigEnsureConv(convId, partnerUserId);
-            if (!ready) return null;
-
-            const result = await sigRatchetEncrypt(convId, plaintext);
-            if (!result) return null;
-
-            const pkt = {
-                h: result.header,
-                c: result.cipher,
-            };
-            if (isFirst) {
-                const st = sigRatchetState(convId);
-                if (st && st.initIkPub && st.initEkPub) {
-                    pkt.ik = st.initIkPub;
-                    pkt.ek = st.initEkPub;
-                }
-            }
-            return '!sig' + JSON.stringify(pkt);
-        }
-
-        async function sigInbound(convId, senderUserId, payload) {
-            if (!sigKeys || !payload || !payload.startsWith('!sig')) return null;
-            try {
-                const parsed = JSON.parse(payload.slice(4));
-                const state = sigRatchetState(convId);
-                if (!state) {
-                    if (parsed.ik && parsed.ek) {
-                        const ready = await sigEnsureConvRespondent(
-                            convId, senderUserId, parsed.ik, parsed.ek, parsed.ot || null, parsed.h
-                        );
-                        if (!ready) return null;
-                    } else {
-                        const ready = await sigEnsureConv(convId, senderUserId);
-                        if (!ready) return null;
-                    }
-                }
-                return await sigRatchetDecrypt(convId, parsed.h, parsed.c);
-            } catch (e) {
-                return null;
-            }
-        }
-
-        async function sigEncryptMessage(plaintext, convId, partnerUserId) {
-            const result = await sigOutbound(convId, partnerUserId, plaintext);
-            return result;
-        }
-
-                async function sigDecryptMessage(ciphertext, convId, senderUserId) {
-            if (!ciphertext) return '';
-            if (ciphertext.startsWith('!sig')) {
-                const decrypted = await sigInbound(convId, senderUserId, ciphertext);
-                if (decrypted) return decrypted;
-                return '[Не удалось расшифровать]';
-            }
-            return ciphertext;
-        }
-
-        function connectWebSocket() {
+        async function connectWebSocket() {
             if (ws && ws.readyState === 1) return;
             if (!currentUser) return;
+
+            let token;
+            try {
+                token = await getSessionToken();
+            } catch (e) {
+                scheduleWsReconnect();
+                return;
+            }
+            if (!token) {
+                scheduleWsReconnect();
+                return;
+            }
 
             try {
                 ws = new WebSocket(WS_URL);
@@ -3503,7 +3035,7 @@
 
             ws.onopen = () => {
                 wsConnected = true;
-                ws.send(JSON.stringify({ type: 'auth', token: getSessionToken() }));
+                ws.send(JSON.stringify({ type: 'auth', token }));
             };
 
             ws.onmessage = async (event) => {
@@ -3527,8 +3059,33 @@
             }, 5000);
         }
 
-        function getSessionToken() {
-            return csrfToken || '';
+        async function getSessionToken() {
+            if (wsToken && Date.now() < wsTokenExpires - 5000) {
+                return wsToken;
+            }
+            if (wsTokenPromise) {
+                return wsTokenPromise;
+            }
+            if (!csrfToken) {
+                throw new Error('No CSRF token');
+            }
+            wsTokenPromise = fetch(apiCall('ws_token'), {
+                method: 'POST',
+                headers: { 'X-CSRF-Token': csrfToken }
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success && data.ws_token) {
+                    wsToken = data.ws_token;
+                    wsTokenExpires = Date.now() + 30000;
+                    return wsToken;
+                }
+                throw new Error('WS token request failed');
+            })
+            .finally(() => {
+                wsTokenPromise = null;
+            });
+            return wsTokenPromise;
         }
 
         let pendingConvOpen = null;
@@ -3544,6 +3101,7 @@
                             pendingConvOpen = null;
                         }
                     }
+                    if (currentConvId) markAsRead(currentConvId);
                     break;
                 }
 
@@ -3552,13 +3110,13 @@
                     const localUnread = {};
                     messengerConversations.forEach(c => { localUnread[c.id] = c.unread_count; });
 
-                    messengerConversations = serverConvs.map(sc => {
+                    messengerConversations = sortConversationsByLastMsg(serverConvs.map(sc => {
                         const local = messengerConversations.find(lc => lc.id === sc.id);
                         return {
                             ...sc,
                             unread_count: local ? (local.unread_count || 0) : (parseInt(sc.unread_count) || 0),
                         };
-                    });
+                    }));
 
                     if (pendingConvOpen) {
                         const conv = messengerConversations.find(c => c.id === pendingConvOpen);
@@ -3609,9 +3167,12 @@
                         if (!messengerMessages[currentConvId]) messengerMessages[currentConvId] = [];
                         const existingIdx = messengerMessages[currentConvId].findIndex(m => m.id === msg.id);
                         if (existingIdx === -1) {
+                            if (msg.sender_id == currentUser.id) {
+                                const tempIdx = messengerMessages[currentConvId].findIndex(m => m.id < 0 && m.content === msg.content);
+                                if (tempIdx !== -1) messengerMessages[currentConvId].splice(tempIdx, 1);
+                            }
                             messengerMessages[currentConvId].push(msg);
                             renderMessages();
-                            scrollChatDown();
                         }
                         if (msg.sender_id != currentUser.id) {
                             markAsRead(currentConvId);
@@ -3619,7 +3180,6 @@
                     } else if (msg.sender_id != currentUser.id) {
                         const senderName = msg.username || 'Пользователь';
                         let preview = msg.content || '';
-                        if (preview.startsWith('!sig')) preview = '<svg width="12" height="12" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:2px;"><rect x="3" y="7" width="10" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Зашифрованное сообщение';
                         const conv = messengerConversations.find(c => c.id == msg.conversation_id);
                         if (!conv || !conv.muted) {
                             const avatar = getProxyUrl(msg.avatar_url || `https://ui-avatars.com/api/?name=${senderName}&background=random`);
@@ -3640,8 +3200,7 @@
                             messengerMessages[data.conversation_id] = [...(data.messages || []), ...existing];
                         }
                         if (currentConvId == data.conversation_id) {
-                            renderMessages();
-                            if (!data.before) scrollChatDown();
+                            renderMessages(!!data.before);
                         }
                     }
                     break;
@@ -3653,11 +3212,24 @@
                         const text = document.getElementById('typingText');
                         if (data.is_typing) {
                             el.classList.remove('hidden');
-                            text.textContent = `${data.username || 'Пользователь'} печатает...`;
+                            if (text) text.textContent = (data.username || 'Пользователь') + ' печатает...';
                             clearTimeout(el._typingTimer);
-                            el._typingTimer = setTimeout(() => el.classList.add('hidden'), 3000);
+                            el._typingTimer = setTimeout(() => {
+                                el.classList.add('hidden');
+                            }, 10000);
+                            const sc = document.getElementById('chatMessages');
+                            // column-reverse: внизу scrollTop = 0
+                            if (sc && sc.scrollTop < 80) {
+                                sc.scrollTo({ top: 0, behavior: 'smooth' });
+                            }
                         } else {
+                            clearTimeout(el._typingTimer);
+                            const sc = document.getElementById('chatMessages');
+                            const nearBot = sc && sc.scrollTop < 80;
                             el.classList.add('hidden');
+                            if (sc && nearBot) {
+                                sc.scrollTo({ top: 0, behavior: 'smooth' });
+                            }
                         }
                     }
                     break;
@@ -3668,7 +3240,7 @@
                         const msg = messengerMessages[currentConvId].find(m => m.id == data.message_id);
                         if (msg && msg.sender_id == currentUser.id) {
                             msg.my_status = data.status;
-                            renderMessages();
+                            renderMessages(true);
                         }
                     }
                     break;
@@ -3682,7 +3254,7 @@
                                 m.my_status = 'read';
                             }
                         });
-                        renderMessages();
+                        renderMessages(true);
                     }
                     break;
                 }
@@ -3693,7 +3265,7 @@
                         const idx = msgs.findIndex(m => m.id == data.message_id);
                         if (idx !== -1) {
                             msgs.splice(idx, 1);
-                            renderMessages();
+                            renderMessages(true);
                         }
                     }
                     break;
@@ -3705,7 +3277,7 @@
                         const msg = msgs.find(m => m.id == data.message_id);
                         if (msg) {
                             msg.content = data.content;
-                            renderMessages();
+                            renderMessages(true);
                         }
                     }
                     break;
@@ -3752,7 +3324,6 @@
                         messengerMessages[data.conversation_id] = [];
                         if (currentConvId == data.conversation_id) {
                             renderMessages();
-                            scrollChatDown();
                         }
                     }
                     break;
@@ -3779,13 +3350,30 @@
 
                 case 'require_captcha': {
                     captchaRequired = true;
-                    _pendingSpamMessage = null;
+                    if (_pendingWsContent) {
+                        const input = document.getElementById('chatInput');
+                        if (input) input.value = _pendingWsContent;
+                        _pendingSpamMessage = () => {
+                            const form = document.getElementById('chatForm');
+                            if (form) form.dispatchEvent(new Event('submit', { cancelable: true }));
+                        };
+                        _pendingWsContent = null;
+                        _pendingWsReply = null;
+                    } else {
+                        _pendingSpamMessage = null;
+                    }
                     showSpamCaptcha();
                     break;
                 }
 
                 case 'error': {
-                    showToast(data.error || 'Ошибка');
+                    if (data.error === 'Invalid session') {
+                        wsToken = null;
+                        wsTokenExpires = 0;
+                        scheduleWsReconnect();
+                    } else {
+                        showToast(data.error || 'Ошибка');
+                    }
                     if (currentConvId && String(currentConvId).startsWith('pending_')) {
                         showConvList();
                         clearPendingNewChatTimeout();
@@ -3819,6 +3407,15 @@
             });
         }
 
+        function sortConversationsByLastMsg(convs) {
+            return convs.slice().sort((a, b) => {
+                const ta = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+                const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+                if (tb !== ta) return tb - ta;
+                return (b.id || 0) - (a.id || 0);
+            });
+        }
+
         async function openMessenger(openConvId = null) {
             if (!currentUser) return;
             messengerInitialized = true;
@@ -3833,7 +3430,6 @@
                 document.getElementById('chatSection').classList.add('hidden');
             }
 
-            await sigInit().catch(() => {});
             connectWebSocket();
 
             if (openConvId) {
@@ -3858,7 +3454,7 @@
                 const res = await fetch(apiCall('conversations'));
                 const data = await res.json();
                 if (data.success) {
-                    messengerConversations = data.conversations || [];
+                    messengerConversations = sortConversationsByLastMsg(data.conversations || []);
                     const unread = messengerConversations.reduce((s, c) => s + (parseInt(c.unread_count) || 0), 0);
                     updateMsgBadge(unread);
                     renderConvList();
@@ -3903,6 +3499,7 @@
 
         function renderConvList() {
             const list = document.getElementById('convListItems');
+            messengerConversations = sortConversationsByLastMsg(messengerConversations);
             if (!messengerConversations.length) {
                 list.innerHTML = `<div class="empty-state"><i class="ph ph-chat-circle"></i><p>Нет диалогов</p></div>`;
                 return;
@@ -3920,7 +3517,6 @@
                 const time = conv.last_message_at ? timeAgo(conv.last_message_at) : '';
 
                 let preview = lastMsg;
-                if (preview.startsWith('!sig')) preview = '<svg width="11" height="11" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:1px;"><rect x="3" y="7" width="10" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Зашифровано';
                 const blockStyle = blocked ? 'style="filter:grayscale(100%);opacity:0.5;"' : '';
                 const nameStyle = blocked ? 'style="color:var(--text-muted);"' : '';
                 return `<div class="conv-item ${blocked ? 'conv-blocked' : ''}" onclick="openConv(${conv.id})" oncontextmenu="event.preventDefault(); showConvContextMenu(${conv.id}, event)">
@@ -3973,6 +3569,11 @@
 
             const chatForm = document.getElementById('chatForm');
             const blockedBanner = document.getElementById('chatBlockedBanner');
+            const chatMessages = document.getElementById('chatMessages');
+            const chatMessagesInner = document.getElementById('chatMessagesInner');
+            if (chatMessagesInner) chatMessagesInner.innerHTML = '';
+            if (chatMessages) chatMessages.scrollTop = 0;
+            document.getElementById('chatLoadMore').classList.add('hidden');
             if (isBlocked) {
                 chatForm.style.display = 'none';
                 blockedBanner.classList.remove('hidden');
@@ -3983,10 +3584,10 @@
 
             if (wsConnected) {
                 ws.send(JSON.stringify({ type: 'get_messages', conversation_id: conv.id }));
-                ws.send(JSON.stringify({ type: 'mark_read', conversation_id: conv.id }));
             } else {
                 loadMessagesHttp(conv.id);
             }
+            markAsRead(conv.id);
 
             conv.unread_count = 0;
             renderConvList();
@@ -4001,56 +3602,137 @@
                 const data = await res.json();
                 if (data.success && data.messages) {
                     messengerMessages[convId] = data.messages;
-                    if (currentConvId === convId) { renderMessages(); scrollChatDown(); }
+                    if (currentConvId === convId) { renderMessages(); }
                 }
             } catch (e) {
                 console.error('loadMessagesHttp error:', e);
             }
         }
 
-        let decryptingMessages = {};
-
-        async function decryptMsgContent(msg) {
-            if (!msg.content || !msg.content.startsWith('enc:')) return msg.content;
-            if (decryptingMessages[msg.id]) return decryptingMessages[msg.id];
-            const partnerId = msg.sender_id == currentUser.id && currentConvPartner
-                ? currentConvPartner.id
-                : msg.sender_id;
-            const decrypted = await signalDecrypt(msg.content, currentConvId, partnerId);
-            decryptingMessages[msg.id] = decrypted;
-            return decrypted;
+        function renderMsgBody(text) {
+            if (!text) return '';
+            const urlRegex = /(https?:\/\/[^\s<>"']+)/g;
+            const parts = [];
+            let lastIdx = 0;
+            let match;
+            while ((match = urlRegex.exec(text)) !== null) {
+                if (match.index > lastIdx) {
+                    parts.push({ type: 'text', content: text.substring(lastIdx, match.index) });
+                }
+                const url = match[0];
+                const isImage = /\.(gif|png|jpg|jpeg|webp)(\?.*)?$/i.test(url) || url.includes('i.ibb.co') || url.includes('ibb.co');
+                parts.push({ type: isImage ? 'image' : 'link', content: url });
+                lastIdx = match.index + match[0].length;
+            }
+            if (lastIdx < text.length) {
+                parts.push({ type: 'text', content: text.substring(lastIdx) });
+            }
+            if (parts.length === 0) return linkify(escHtml(text));
+            return parts.map(p => {
+                if (p.type === 'text') return linkify(escHtml(p.content));
+                if (p.type === 'image') {
+                    const proxyUrl = getProxyUrl(p.content);
+                    const safeUrl = p.content.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                    return `<div class="msg-image-wrapper"><img src="${proxyUrl}" class="msg-image" loading="lazy" onclick="event.stopPropagation(); viewChatImage('${safeUrl}')" onerror="this.style.display='none'" oncontextmenu="event.stopPropagation(); event.preventDefault()"></div>`;
+                }
+                const h = p.content.replace(/&quot;/g, '%22').replace(/</g, '%3C').replace(/>/g, '%3E');
+                return '<a href="' + h + '" target="_blank" rel="noopener noreferrer" style="color: #ffffff; text-decoration: underline; word-break: break-word;" onclick="event.stopPropagation()">' + p.content + '</a>';
+            }).join('');
         }
 
-        async function renderMessages() {
-            const container = document.getElementById('chatMessages');
-            const msgs = messengerMessages[currentConvId] || [];
+        function viewChatImage(url) {
+            const existing = document.getElementById('imgViewer');
+            if (existing) existing.remove();
 
-            const prevScrollHeight = container.scrollHeight;
-            const prevScrollTop = container.scrollTop;
-            const prevClientHeight = container.clientHeight;
-            const nearBottom = prevScrollHeight - prevScrollTop - prevClientHeight < 140;
+            const overlay = document.createElement('div');
+            overlay.id = 'imgViewer';
+            overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0);display:flex;align-items:center;justify-content:center;transition:background 0.25s;';
+            overlay.innerHTML = `<img src="${getProxyUrl(url)}" id="imgViewerImg" style="max-width:90vw;max-height:90vh;border-radius:12px;opacity:0;transform:scale(0.92);transition:opacity 0.2s,transform 0.2s;cursor:grab;user-select:none;" draggable="false" oncontextmenu="event.preventDefault()">`;
+
+            overlay.onclick = (e) => { if (e.target === overlay) closeImageViewer(); };
+            document.addEventListener('keydown', onImgViewerKey);
+            document.body.appendChild(overlay);
+
+            requestAnimationFrame(() => {
+                overlay.style.background = 'rgba(0,0,0,0.92)';
+                const img = document.getElementById('imgViewerImg');
+                img.style.opacity = '1';
+                img.style.transform = 'scale(1)';
+            });
+
+            let scale = 1, panX = 0, panY = 0, panning = false, lastX = 0, lastY = 0;
+
+            const img = document.getElementById('imgViewerImg');
+            img.onwheel = (e) => {
+                e.preventDefault();
+                const delta = e.deltaY > 0 ? 0.85 : 1.15;
+                const newScale = Math.min(5, Math.max(0.5, scale * delta));
+                if (newScale !== scale) {
+                    scale = newScale;
+                    img.style.transform = `scale(${scale}) translate(${panX}px,${panY}px)`;
+                    img.style.cursor = scale > 1.01 ? (panning ? 'grabbing' : 'grab') : 'grab';
+                }
+            };
+            img.onmousedown = (e) => {
+                if (scale <= 1.01) return;
+                e.preventDefault();
+                panning = true;
+                lastX = e.clientX; lastY = e.clientY;
+                img.style.cursor = 'grabbing';
+            };
+            window.addEventListener('mousemove', (e) => {
+                if (!panning) return;
+                panX += (e.clientX - lastX) / scale;
+                panY += (e.clientY - lastY) / scale;
+                lastX = e.clientX; lastY = e.clientY;
+                img.style.transform = `scale(${scale}) translate(${panX}px,${panY}px)`;
+            });
+            window.addEventListener('mouseup', () => {
+                panning = false;
+                if (img) img.style.cursor = scale > 1.01 ? 'grab' : 'grab';
+            });
+            img.ondblclick = (e) => {
+                e.preventDefault();
+                if (scale > 1.01) { scale = 1; panX = 0; panY = 0; img.style.transform = 'scale(1)'; img.style.cursor = 'grab'; }
+                else { scale = 2; img.style.transform = `scale(2)`; img.style.cursor = 'grab'; }
+            };
+        }
+
+        function closeImageViewer() {
+            const overlay = document.getElementById('imgViewer');
+            if (!overlay) return;
+            overlay.style.background = 'rgba(0,0,0,0)';
+            const img = document.getElementById('imgViewerImg');
+            if (img) { img.style.opacity = '0'; img.style.transform = 'scale(0.92)'; }
+            document.removeEventListener('keydown', onImgViewerKey);
+            setTimeout(() => overlay.remove(), 250);
+        }
+
+        function onImgViewerKey(e) {
+            if (e.key === 'Escape') closeImageViewer();
+        }
+
+        window.viewChatImage = viewChatImage;
+
+        async function renderMessages(keepPosition = false) {
+            const container = document.getElementById('chatMessagesInner');
+            const scrollContainer = document.getElementById('chatMessages');
+            const msgs = messengerMessages[currentConvId] || [];
 
             if (!msgs.length) {
                 container.innerHTML = `<div class="empty-state" style="min-height:200px;"><i class="ph ph-chat-circle"></i><p>Нет сообщений. Напишите первым!</p></div>`;
                 return;
             }
 
-            const decryptedContents = {};
-            for (const msg of msgs) {
-                if (msg.sender_id === currentUser.id || !msg.content.startsWith('!sig')) {
-                    decryptedContents[msg.id] = msg.content || '';
-                } else {
-                    const partnerId = currentConvPartner ? currentConvPartner.id : msg.sender_id;
-                    decryptedContents[msg.id] = await sigDecryptMessage(msg.content || '', currentConvId, partnerId);
-                }
-            }
-
+            // При column-reverse сообщения в DOM идут от новых к старым,
+            // чтобы визуально старые были сверху, а новые — снизу.
+            const reversed = msgs.slice().reverse();
             let html = '';
             let lastSenderId = null;
 
-            msgs.forEach((msg) => {
+            reversed.forEach((msg) => {
                 const isMe = msg.sender_id == currentUser.id;
-                const displayContent = decryptedContents[msg.id] || msg.content || '';
+                const displayContent = msg.content || '';
                 const isFirstOfGroup = msg.sender_id !== lastSenderId;
 
                 let statusIcon = '';
@@ -4081,7 +3763,7 @@
                 if (msg.reply_to) {
                     const replyMsg = msgs.find(m => m.id == msg.reply_to);
                     if (replyMsg) {
-                        const replyContent = decryptedContents[replyMsg.id] || replyMsg.content || '';
+                        const replyContent = replyMsg.content || '';
                         replyHtml = `<div class="msg-reply" onclick="scrollToMsg(${msg.reply_to})">
                             <div class="msg-reply-name">${replyMsg.username}</div>
                             <div class="msg-reply-text">${escHtml(replyContent.substring(0, 80))}</div>
@@ -4096,7 +3778,7 @@
                         ${!isMe && isFirstOfGroup ? `<div class="msg-author">${msg.username}</div>` : ''}
                         ${replyHtml}
                         <div class="msg-bubble" onclick="showMsgActions(${msg.id}, event)" oncontextmenu="event.preventDefault(); showMsgActions(${msg.id}, event);">
-                            <div class="msg-text">${linkify(escHtml(displayContent))}</div>
+                            <div class="msg-text">${renderMsgBody(displayContent)}</div>
                             <div class="msg-meta">
                                 <span class="msg-time">${time}${isEdited}</span>
                                 ${isMe ? statusIcon : ''}
@@ -4108,19 +3790,12 @@
                 lastSenderId = msg.sender_id;
             });
 
-            container.style.overflowY = 'hidden';
             container.innerHTML = html;
-            container.style.overflowY = '';
-            if (prevScrollHeight === 0 || nearBottom) {
-                container.scrollTop = container.scrollHeight;
-            } else {
-                container.scrollTop = prevScrollTop + (container.scrollHeight - prevScrollHeight);
-            }
         }
 
         function scrollChatDown() {
             const container = document.getElementById('chatMessages');
-            container.scrollTop = container.scrollHeight;
+            if (container) container.scrollTop = 0;
         }
 
         window.scrollToMsg = function(msgId) {
@@ -4144,9 +3819,7 @@
                     const data = await res.json();
                     if (data.success && data.messages.length) {
                         messengerMessages[currentConvId] = [...data.messages, ...msgs];
-                        renderMessages();
-                        const el = document.getElementById('msg-' + data.messages[data.messages.length - 1].id);
-                        if (el) el.scrollIntoView({ block: 'start' });
+                        renderMessages(true);
                     }
                 } catch (e) {}
             }
@@ -4156,6 +3829,9 @@
             e.preventDefault();
             const input = document.getElementById('chatInput');
             let content = input.value.trim();
+            if (pendingAttachments.length) {
+                content = (content ? content + '\n' : '') + pendingAttachments.join('\n');
+            }
             if (!content) return;
             if (!currentConvId) return;
             if (String(currentConvId).startsWith('pending_')) return;
@@ -4190,28 +3866,13 @@
                 return;
             }
 
-            const originalText = content;
-            if (partnerId) {
-                const encrypted = await sigEncryptMessage(content, currentConvId, partnerId);
-                if (!encrypted) {
-                    if (!sigKeysUploaded) {
-                        showToast('Инициализация шифрования, повторите отправку');
-                        return;
-                    }
-                    const retry = await sigEncryptMessage(content, currentConvId, partnerId);
-                    if (!retry) { showToast('Нет ключей шифрования у собеседника'); return; }
-                    content = retry;
-                }
-            }
-
-            const isEncrypted = content !== originalText;
             const tempId = -Date.now();
-            if (isEncrypted && currentConvId) {
+            if (currentConvId) {
                 if (!messengerMessages[currentConvId]) messengerMessages[currentConvId] = [];
                 messengerMessages[currentConvId].push({
                     id: tempId,
                     sender_id: currentUser.id,
-                    content: originalText,
+                    content,
                     my_status: 'sent',
                     created_at: new Date().toISOString(),
                     username: currentUser.username,
@@ -4222,6 +3883,8 @@
             }
 
             if (wsConnected) {
+                _pendingWsContent = content;
+                _pendingWsReply = replyToMessage ? replyToMessage.id : null;
                 ws.send(JSON.stringify({
                     type: 'send_message',
                     conversation_id: currentConvId,
@@ -4239,24 +3902,38 @@
                     const data = await res.json();
                     if (data.success && data.message) {
                         if (!messengerMessages[currentConvId]) messengerMessages[currentConvId] = [];
+                        const tempIdx = messengerMessages[currentConvId].findIndex(m => m.id < 0 && m.content === data.message.content);
+                        if (tempIdx !== -1) messengerMessages[currentConvId].splice(tempIdx, 1);
                         messengerMessages[currentConvId].push(data.message);
                         renderMessages();
                         scrollChatDown();
+                        cancelReply();
+                        input.value = '';
+                        input.style.height = 'auto';
+                        pendingAttachments = [];
+                        renderAttachmentPreviews();
                     } else if (data.require_captcha) {
                         captchaRequired = true;
                         _pendingSpamMessage = () => sendChatMessage(e);
                         showSpamCaptcha();
                     } else {
                         showToast(data.error || 'Ошибка');
+                        cancelReply();
+                        input.value = '';
+                        input.style.height = 'auto';
                     }
                 } catch (e) {
                     showToast('Ошибка отправки');
                 }
             }
 
-            cancelReply();
-            input.value = '';
-            input.style.height = 'auto';
+            if (wsConnected) {
+                cancelReply();
+                input.value = '';
+                input.style.height = 'auto';
+                pendingAttachments = [];
+                renderAttachmentPreviews();
+            }
         }
 
         function markAsRead(convId) {
@@ -4303,6 +3980,25 @@
             document.getElementById('chatSendBtn').innerHTML = '<i class="ph-fill ph-paper-plane-right"></i>';
         }
 
+        window.copyMsg = function(msgId) {
+            const msgs = messengerMessages[currentConvId] || [];
+            const msg = msgs.find(m => m.id === msgId);
+            if (!msg || !msg.content) return;
+            navigator.clipboard.writeText(msg.content).then(() => {
+                showToast('Сообщение скопировано');
+            }).catch(() => {
+                const ta = document.createElement('textarea');
+                ta.value = msg.content;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                showToast('Сообщение скопировано');
+            });
+        };
+
         window.showMsgActions = function(msgId, event) {
             const msgs = messengerMessages[currentConvId] || [];
             const msg = msgs.find(m => m.id === msgId);
@@ -4311,6 +4007,7 @@
 
             const actions = [];
             actions.push({ label: 'Ответить', icon: 'ph-arrow-u-down-left', action: `replyToMsg(${msgId})` });
+            actions.push({ label: 'Копировать', icon: 'ph-copy', action: `copyMsg(${msgId})` });
 
             if (isMe) {
                 actions.push({ label: 'Редактировать', icon: 'ph-pencil', action: `editMsg(${msgId})` });
@@ -4451,7 +4148,7 @@
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
                     }).then(() => {
                         messengerMessages[convId] = [];
-                        if (currentConvId == convId) { renderMessages(); scrollChatDown(); }
+                        if (currentConvId == convId) { renderMessages(); }
                     });
                 }
             });
@@ -4552,12 +4249,17 @@
         function openChatEmoji() {
             const picker = document.getElementById('emojiPicker');
             const grid = document.getElementById('emojiGrid');
+            const gifGrid = document.getElementById('gifGrid');
             if (!picker || !grid) return;
             if (picker.classList.contains('hidden')) {
                 if (!grid.innerHTML.trim()) {
                     const emojis = ['😀','😁','😂','🤣','😃','😄','😅','😆','😉','😊','😋','😎','😍','🥰','😘','😜','🤪','😝','🤑','🤗','🤩','🤔','🤨','😐','😑','😶','🙄','😏','😣','😥','😮','🤐','😯','😪','😫','😴','😌','😛','😜','😝','🤤','😒','😓','😔','😕','🙃','🤑','😲','☹️','🙁','😖','😞','😟','😤','😢','😭','😦','😧','😨','😩','🤯','😬','😰','😱','🥵','🥶','😳','🤪','😵','😡','😠','🤬','👋','🤚','🖐','✋','🖖','👌','🤌','🤏','✌️','🤞','🫰','🫵','🤟','🤘','🤙','👈','👉','👆','🖕','👇','👍','👎','👊','✊','🤛','🤜','👏','🙌','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦵','🦶','👂','🦻','👃','🧠','🫀','🫁','🦷','🦴','👀','👁','👅','👄','❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','♥️','🫶','💌','💋','💯','💢','💥','💫','💦','💨','🕳️','💬','👤','👥','🗣️','🧑','👱','👨','👩','🧔','👴','👵','🙋','💁','🙅','🙆','🙇','🤦','🤷','👑','👒','🎩','🎓','🧢','👑','💄','💍','🌍','🌎','🌏','🌐','☀️','🌑','⭐','🌟','🔥','💧','🌊','🍕','🍔','🍟','🌭','🥪','🥙','🧆','🥗','🍿','🧁','🍰','🎂','🍦','🍩','🍪','🍫','🍬','🍭','🍮','☕','🍵','🍺','🍻','🥂','🥃','🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🐦','🐤','🐣','🐥','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🪱','🐛','🦋','🐌','🐞','🐜','🪰','🪲','🪳','🦟','🦗','🕷️','🦂','🐢','🐍','🦎','🦖','🦕','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈','🌹','🥀','🌺','🌸','🌼','🌻','🌞','🌝','🌛','🌜','🌚','🌕','🌖','🌗','🌘','🌑','🌒','🌓','🌔','🌙','🌎','🌍','🌏','🌈','☁️','⛅','⚡','❄️','🔥','💥','⭐','🌟','✨','💫','🎉','🎊','🎈','🎁','🎀','🎃','🎄','🎆','🎇','🧨','✨','🪄','💎','🔮','🎮','🎯','🎲','♟️','🏆','🥇','🥈','🥉','⚽','⚾','🏀','🏐','🏈','🎾','🏉','🎱','🎳','⛳','🏓','🏸','🏒','🏑','🥍','🏏','🪃','🥅','⛸️','🎣','🤿','🎽','🎿','🛷','🥌','🎯','🎰','🎲','♠️','♥️','♦️','♣️','🃏','🀄️','🎴'];
                     grid.innerHTML = emojis.map(e => `<button type="button" class="emoji-item" onclick="insertEmoji('${e}')">${e}</button>`).join('');
                 }
+                if (!gifGrid.innerHTML.trim() || gifGrid.querySelector('.gif-item')) {
+                    gifGrid.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text-muted);">Введите запрос для поиска GIF</div>';
+                }
+                switchPickerTab('emoji');
                 picker.classList.remove('hidden');
             } else {
                 picker.classList.add('hidden');
@@ -4565,6 +4267,160 @@
         }
 
         window.openChatEmoji = openChatEmoji;
+
+        function switchPickerTab(tab) {
+            document.getElementById('tabEmoji').classList.toggle('active', tab === 'emoji');
+            document.getElementById('tabGif').classList.toggle('active', tab === 'gif');
+            document.getElementById('emojiPanel').classList.toggle('hidden', tab !== 'emoji');
+            document.getElementById('gifPanel').classList.toggle('hidden', tab !== 'gif');
+            if (tab === 'gif') setTimeout(() => document.getElementById('gifSearchInput').focus(), 100);
+        }
+        window.switchPickerTab = switchPickerTab;
+
+        let gifSearchTimeout = null;
+        function debounceGifSearch() {
+            clearTimeout(gifSearchTimeout);
+            gifSearchTimeout = setTimeout(performGifSearch, 400);
+        }
+        window.debounceGifSearch = debounceGifSearch;
+
+        async function performGifSearch() {
+            const q = document.getElementById('gifSearchInput').value.trim();
+            const grid = document.getElementById('gifGrid');
+            grid.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text-muted);"><i class="ph ph-spinner spin"></i></div>';
+            try {
+                const res = await fetch(apiCall('gif_search') + '&q=' + encodeURIComponent(q));
+                const data = await res.json();
+                if (data.success && data.gifs.length) {
+                    grid.innerHTML = data.gifs.map(g => {
+                        const url = g.image_url.replace(/'/g, "\\'");
+                        const desc = (g.description || 'GIF').replace(/'/g, "\\'");
+                        return `<div class="gif-item" onclick="insertGif('${url}')" title="${desc}"><img src="${getProxyUrl(g.image_url)}" alt="" loading="lazy"></div>`;
+                    }).join('');
+                } else {
+                    grid.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text-muted);">Ничего не найдено</div>';
+                }
+            } catch (e) {
+                grid.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text-muted);">Ошибка поиска</div>';
+            }
+        }
+
+        function insertGif(url) {
+            const input = document.getElementById('chatInput');
+            input.value += ' ' + url + ' ';
+            input.focus();
+            resizeTextarea(input);
+            closeEmojiPicker();
+        }
+        window.insertGif = insertGif;
+
+        function closeEmojiPicker() {
+            document.getElementById('emojiPicker').classList.add('hidden');
+        }
+
+        let pendingAttachments = [];
+
+        function handleChatFiles(input) {
+            const files = Array.from(input.files || []);
+            input.value = '';
+            if (!files.length) return;
+            uploadChatImages(files);
+        }
+        window.handleChatFiles = handleChatFiles;
+
+        async function uploadChatImages(files) {
+            const progress = showChatUploadProgress(files.length);
+            for (const file of files) {
+                const url = await uploadToImgBBChat(file);
+                if (url) {
+                    pendingAttachments.push(url);
+                    renderAttachmentPreviews();
+                }
+            }
+            progress.remove();
+        }
+
+        function renderAttachmentPreviews() {
+            let container = document.getElementById('attachPreviewContainer');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'attachPreviewContainer';
+                container.className = 'chat-upload-preview';
+                const form = document.getElementById('chatForm');
+                form.parentNode.insertBefore(container, form);
+            }
+            container.innerHTML = pendingAttachments.map((url, i) => {
+                const isGif = /\.gif(\?.*)?$/i.test(url);
+                return `<div style="position:relative;flex-shrink:0;">
+                    <img src="${getProxyUrl(url)}" style="width:56px;height:56px;border-radius:8px;object-fit:cover;">
+                    ${isGif ? '<span style="position:absolute;top:2px;left:2px;background:rgba(0,0,0,0.7);color:#fff;font-size:0.65rem;padding:1px 5px;border-radius:4px;">GIF</span>' : ''}
+                    <button type="button" class="remove-preview" onclick="removeAttachment(${i})" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;background:var(--surface-active);border-radius:50%;font-size:0.7rem;display:flex;align-items:center;justify-content:center;"><i class="ph ph-x"></i></button>
+                </div>`;
+            }).join('');
+            if (!pendingAttachments.length) container.remove();
+            document.getElementById('chatInput').focus();
+        }
+
+        function removeAttachment(i) {
+            pendingAttachments.splice(i, 1);
+            renderAttachmentPreviews();
+        }
+        window.removeAttachment = removeAttachment;
+
+        function showChatUploadProgress(count) {
+            const existing = document.getElementById('chatUploadProgress');
+            if (existing) existing.remove();
+            const el = document.createElement('div');
+            el.id = 'chatUploadProgress';
+            el.className = 'chat-upload-progress';
+            el.innerHTML = `<i class="ph ph-spinner spin spinner"></i> Загрузка ${count} изображени${count > 1 ? 'й' : 'я'}...`;
+            const form = document.getElementById('chatForm');
+            form.parentNode.insertBefore(el, form);
+            return { remove: () => el.remove() };
+        }
+
+        async function uploadToImgBBChat(file) {
+            const fd = new FormData();
+            fd.append('image', file);
+            fd.append('csrf_token', csrfToken);
+            try {
+                const res = await fetch(apiCall('upload_image'), { method: 'POST', body: fd });
+                const data = await res.json();
+                return data.success ? data.url : null;
+            } catch {
+                return null;
+            }
+        }
+
+        document.addEventListener('paste', (e) => {
+            const chatSection = document.getElementById('chatSection');
+            if (!chatSection || chatSection.classList.contains('hidden')) return;
+            if (document.activeElement !== document.getElementById('chatInput') &&
+                !document.getElementById('chatInput').contains(document.activeElement)) return;
+            if (!e.clipboardData || !e.clipboardData.items) return;
+            const items = Array.from(e.clipboardData.items);
+            const files = [];
+            for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                    const file = item.getAsFile();
+                    if (file) files.push(file);
+                }
+            }
+            if (files.length) {
+                e.preventDefault();
+                uploadChatImages(files);
+            }
+        });
+
+        const chatInputEl = document.getElementById('chatInput');
+        if (chatInputEl) {
+            chatInputEl.addEventListener('dragover', (e) => { e.preventDefault(); });
+            chatInputEl.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const files = Array.from(e.dataTransfer.files || []).filter(f => f.type.startsWith('image/'));
+                if (files.length) uploadChatImages(files);
+            });
+        }
 
         window.insertEmoji = function(emoji) {
             const input = document.getElementById('chatInput');
@@ -4687,6 +4543,9 @@
                     const beta = data.privacy.privacy_beta != 0;
                     document.getElementById('privacyBeta').checked = beta;
                     if (currentUser) currentUser.privacy_beta = beta ? 1 : 0;
+                    const noAds = data.privacy.privacy_no_ads != 0;
+                    document.getElementById('privacyNoAds').checked = noAds;
+                    if (currentUser) currentUser.privacy_no_ads = noAds ? 1 : 0;
                 }
             } catch (e) {}
         }
@@ -4728,6 +4587,22 @@
 
         function isBetaUser() {
             return currentUser && currentUser.privacy_beta == 1;
+        }
+
+        window.togglePrivacyNoAds = function(el) {
+            savePrivacySetting('privacy_no_ads', el.checked);
+            if (currentUser) currentUser.privacy_no_ads = el.checked ? 1 : 0;
+            updateBannerVisibility();
+        };
+
+        function updateBannerVisibility() {
+            const banner = document.getElementById('bannerLeft');
+            if (!banner) return;
+            if (currentUser && currentUser.privacy_no_ads == 1) {
+                banner.classList.remove('visible');
+            } else {
+                banner.classList.add('visible');
+            }
         }
 
         /* ─── КНОПКА «НАПИСАТЬ» НА ПРОФИЛЕ ────────── */

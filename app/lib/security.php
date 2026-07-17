@@ -4,8 +4,10 @@ declare(strict_types=1);
 function verifyRecaptcha(?string $token): bool {
     $secret = $GLOBALS['RECAPTCHA_V3_SECRET_KEY'] ?? '';
     $site   = $GLOBALS['RECAPTCHA_V3_SITE_KEY'] ?? '';
-    // Капча отключена — не проверяем
-    if ($secret === '' || $site === '') return true;
+    // Без явного DEV_MODE пустые ключи не являются поводом отключать защиту.
+    if ($secret === '' || $site === '') {
+        return !empty($GLOBALS['DEV_MODE']);
+    }
     if (!$token) return false;
 
     $ch = curl_init('https://www.google.com/recaptcha/api/siteverify');

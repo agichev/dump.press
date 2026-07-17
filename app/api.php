@@ -8,13 +8,51 @@ function checkRateLimit(string $key, int $max, int $windowSec): bool {
     if (!is_dir($dir)) @mkdir($dir, 0700, true);
     $file = "$dir/" . md5($key) . '.rl';
     $now = time();
-    $data = @file_get_contents($file);
+
+    $fp = @fopen($file, 'c+');
+    if (!$fp) return false;
+    if (!flock($fp, LOCK_EX)) { fclose($fp); return false; }
+
+    $data = '';
+    rewind($fp);
+    while (!feof($fp)) $data .= fread($fp, 8192);
     $log = $data ? json_decode($data, true) : [];
-    $log = array_filter($log, fn($t) => $t > $now - $windowSec);
-    if (count($log) >= $max) return false;
+    if (!is_array($log)) $log = [];
+    $log = array_values(array_filter($log, fn($t) => $t > $now - $windowSec));
+    if (count($log) >= $max) {
+        flock($fp, LOCK_UN);
+        fclose($fp);
+        return false;
+    }
     $log[] = $now;
-    @file_put_contents($file, json_encode($log));
+    ftruncate($fp, 0);
+    rewind($fp);
+    fwrite($fp, json_encode($log));
+    fflush($fp);
+    flock($fp, LOCK_UN);
+    fclose($fp);
     return true;
+}
+
+function encryptMessage(string $plaintext): string {
+    $key = $GLOBALS['dump_encryption_key'];
+    $iv = random_bytes(12);
+    $tag = '';
+    $ciphertext = openssl_encrypt($plaintext, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag);
+    if ($ciphertext === false) throw new RuntimeException('Encryption failed');
+    return 'enc:' . base64_encode($iv . $tag . $ciphertext);
+}
+
+function decryptMessage(string $data): string {
+    if (substr($data, 0, 4) !== 'enc:') return $data;
+    $key = $GLOBALS['dump_encryption_key'];
+    $raw = base64_decode(substr($data, 4), true);
+    if (!$raw || strlen($raw) < 28) return $data;
+    $iv = substr($raw, 0, 12);
+    $tag = substr($raw, 12, 16);
+    $ciphertext = substr($raw, 28);
+    $result = openssl_decrypt($ciphertext, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag);
+    return $result !== false ? $result : $data;
 }
 
 /* ----------------------------------------------------------------------
@@ -68,7 +106,7 @@ function requireAuth() {
 }
 
 // CSRF для всех POST, кроме публичных эндпоинтов аутентификации.
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array($action, ['login', 'register', 'tfa_verify_login', 'register_fcm_token_native'], true)) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array($action, ['login', 'register', 'tfa_verify_login'], true)) {
     $client_csrf = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf_token'] ?? '';
     if (!$current_session || !hash_equals($current_session['csrf_token'], $client_csrf)) {
         echo json_encode(['success' => false, 'error' => 'Ошибка безопасности (CSRF). Пожалуйста, обновите страницу.']);
@@ -113,7 +151,7 @@ try {
             }
             $email = filter_var(trim($_POST['email'] ?? ''), FILTER_VALIDATE_EMAIL);
             $password = $_POST['password'] ?? '';
-            if (!$email || strlen($password) < 6) throw new Exception('Укажите корректный email и пароль (минимум 6 символов).');
+            if (!$email || strlen($password) < 8) throw new Exception('Укажите корректный email и пароль (минимум 8 символов).');
 
             $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
             $stmt->execute([$email]);
@@ -124,10 +162,32 @@ try {
 
             $stmt = $pdo->prepare("INSERT INTO users (email, username, password_hash) VALUES (?, ?, ?)");
             $stmt->execute([$email, $username, $hash]);
-            createSession($pdo->lastInsertId());
-            echo json_encode(['success' => true]);
+            $newUserId = $pdo->lastInsertId();
+
+            $verifyCode = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+            $verifyToken = bin2hex(random_bytes(32));
+            $stmt = $pdo->prepare("INSERT INTO temp_auth (token, user_id, code, type, expires_at) VALUES (?, ?, ?, 'verify_email', DATE_ADD(NOW(), INTERVAL 24 HOUR))");
+            $stmt->execute([$verifyToken, $newUserId, $verifyCode]);
+            sendResendEmail($email, "Подтверждение email: $verifyCode", $verifyCode);
+
+            createSession($newUserId);
+            echo json_encode(['success' => true, 'require_email_verification' => true, 'temp_token' => $verifyToken]);
             break;
         }
+
+        case 'verify_email':
+            requireAuth();
+            $code = trim($_POST['code'] ?? '');
+            $tempToken = $_POST['temp_token'] ?? '';
+            if (!$code || !$tempToken) throw new Exception('Некорректные данные');
+            $stmt = $pdo->prepare("SELECT code FROM temp_auth WHERE token = ? AND user_id = ? AND type = 'verify_email' AND expires_at > NOW()");
+            $stmt->execute([$tempToken, $current_session['user_id']]);
+            $authData = $stmt->fetch();
+            if (!$authData || $authData['code'] !== $code) throw new Exception('Неверный код подтверждения');
+            $pdo->prepare("UPDATE users SET email_verified = 1 WHERE id = ?")->execute([$current_session['user_id']]);
+            $pdo->prepare("DELETE FROM temp_auth WHERE token = ?")->execute([$tempToken]);
+            echo json_encode(['success' => true]);
+            break;
 
         case 'login': {
             if (!checkRateLimit('login_' . getClientIp(), 10, 60)) {
@@ -203,6 +263,10 @@ try {
             $code = trim($_POST['code'] ?? '');
             if (!$token || !$code) throw new Exception('Некорректные данные');
 
+            if (!checkRateLimit('tfa_ip_' . getClientIp(), 5, 900) || !checkRateLimit('tfa_token_' . $token, 5, 900)) {
+                throw new Exception('Слишком много попыток ввода кода. Попробуйте позже.');
+            }
+
             $stmt = $pdo->prepare("SELECT ta.user_id, ta.code as temp_code, u.tfa_method, u.tfa_secret FROM temp_auth ta JOIN users u ON ta.user_id = u.id WHERE ta.token = ? AND ta.type = 'login' AND ta.expires_at > NOW()");
             $stmt->execute([$token]);
             $authData = $stmt->fetch();
@@ -235,7 +299,7 @@ try {
 
         case 'me':
             if ($current_session) {
-                $stmt = $pdo->prepare("SELECT id, username, email, avatar_url, bio, created_at, tfa_enabled, bookmarks_public, privacy_searchable, privacy_messages, privacy_beta, captcha_required FROM users WHERE id = ?");
+                $stmt = $pdo->prepare("SELECT id, username, email, avatar_url, bio, created_at, tfa_enabled, bookmarks_public, privacy_searchable, privacy_messages, privacy_beta, captcha_required, privacy_no_ads FROM users WHERE id = ?");
                 $stmt->execute([$current_session['user_id']]);
                 $user = $stmt->fetch();
                 $user['username'] = htmlspecialchars($user['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -248,6 +312,17 @@ try {
             break;
 
         /* ---------------- 2FA НАСТРОЙКИ ---------------- */
+        case 'ws_token':
+            requireAuth();
+            $wsToken = $current_session['ws_token'] ?? '';
+            if (!$wsToken) {
+                $wsToken = bin2hex(random_bytes(32));
+                $pdo->prepare("UPDATE sessions SET ws_token = ? WHERE token = ?")
+                    ->execute([$wsToken, $current_session['token']]);
+            }
+            echo json_encode(['success' => true, 'ws_token' => $wsToken]);
+            break;
+
         case 'tfa_settings':
             requireAuth();
             $stmt = $pdo->prepare("SELECT tfa_enabled, tfa_method FROM users WHERE id = ?");
@@ -328,23 +403,49 @@ try {
 
         case 'tfa_disable':
             requireAuth();
+            $password = $_POST['current_password'] ?? '';
+            $code = trim($_POST['code'] ?? '');
+            $tempToken = $_POST['temp_token'] ?? '';
+
+            $stmt = $pdo->prepare("SELECT password_hash, tfa_enabled, tfa_method, tfa_secret, email FROM users WHERE id = ?");
+            $stmt->execute([$current_session['user_id']]);
+            $user = $stmt->fetch();
+            if (!$user || !password_verify($password, $user['password_hash'])) {
+                throw new Exception('Неверный пароль');
+            }
+
+            if ($user['tfa_enabled']) {
+                if ($user['tfa_method'] === 'app') {
+                    if (!$code || !verifyTOTP($user['tfa_secret'], $code)) {
+                        throw new Exception('Неверный код 2FA');
+                    }
+                } else if ($user['tfa_method'] === 'email') {
+                    if (!$code) {
+                        $newTemp = bin2hex(random_bytes(32));
+                        $emailCode = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+                        $stmt = $pdo->prepare("INSERT INTO temp_auth (token, user_id, code, type, expires_at) VALUES (?, ?, ?, 'disable_2fa', DATE_ADD(NOW(), INTERVAL 15 MINUTE))");
+                        $stmt->execute([$newTemp, $current_session['user_id'], $emailCode]);
+                        sendResendEmail($user['email'], "Код отключения 2FA: $emailCode", $emailCode);
+                        echo json_encode(['success' => false, 'require_code' => true, 'temp_token' => $newTemp, 'message' => 'Введите код из email']);
+                        exit;
+                    }
+                    $stmt = $pdo->prepare("SELECT code FROM temp_auth WHERE token = ? AND user_id = ? AND type = 'disable_2fa' AND expires_at > NOW()");
+                    $stmt->execute([$tempToken, $current_session['user_id']]);
+                    $authData = $stmt->fetch();
+                    if (!$authData || $authData['code'] !== $code) {
+                        throw new Exception('Неверный код подтверждения');
+                    }
+                    $pdo->prepare("DELETE FROM temp_auth WHERE token = ?")->execute([$tempToken]);
+                }
+            }
+
             $pdo->prepare("UPDATE users SET tfa_enabled = 0, tfa_method = '', tfa_secret = '' WHERE id = ?")
                 ->execute([$current_session['user_id']]);
             echo json_encode(['success' => true]);
             break;
 
         /* ---------------- СЕССИИ / IP ---------------- */
-        case 'update_ip':
-            requireAuth();
-            $ip = substr($_POST['ip'] ?? '', 0, 45);
-            if (filter_var($ip, FILTER_VALIDATE_IP)) {
-                $stmt = $pdo->prepare("UPDATE sessions SET ip_address = ? WHERE token = ?");
-                $stmt->execute([$ip, $current_session['token']]);
-                echo json_encode(['success' => true]);
-            } else {
-                echo json_encode(['success' => false, 'error' => 'Invalid IP']);
-            }
-            break;
+        // update_ip удалён: разрешать клиенту произвольно менять IP сессии небезопасно.
 
         /* ---------------- ПОИСК ---------------- */
         case 'search': {
@@ -716,6 +817,14 @@ try {
             }
 
             echo json_encode(['success' => true, 'slug' => $slug]);
+
+            foreach (explode(',', $image_url) as $img) {
+                $img = trim($img);
+                if ($img && preg_match('/\.gif(\?.*)?$/i', $img)) {
+                    $pdo->prepare("INSERT INTO gifs (user_id, image_url, description) VALUES (?, ?, ?)")
+                        ->execute([$uid, $img, mb_substr($content, 0, 500)]);
+                }
+            }
             break;
 
         case 'delete_post':
@@ -880,12 +989,42 @@ try {
             requireAuth();
             $username = trim($_POST['username'] ?? '');
             $email = filter_var(trim($_POST['email'] ?? ''), FILTER_VALIDATE_EMAIL);
+            $password = $_POST['current_password'] ?? '';
+            $code = trim($_POST['code'] ?? '');
+            $tempToken = $_POST['temp_token'] ?? '';
 
             if (!$username || !$email) throw new Exception('Имя пользователя и Email обязательны');
 
             $stmt = $pdo->prepare("SELECT id FROM users WHERE (email = ? OR username = ?) AND id != ?");
             $stmt->execute([$email, $username, $current_session['user_id']]);
             if ($stmt->fetch()) throw new Exception('Email или Имя пользователя уже заняты');
+
+            $stmt = $pdo->prepare("SELECT email, password_hash, tfa_enabled, tfa_method, tfa_secret FROM users WHERE id = ?");
+            $stmt->execute([$current_session['user_id']]);
+            $current = $stmt->fetch();
+            if (!$current || !password_verify($password, $current['password_hash'])) {
+                throw new Exception('Неверный пароль');
+            }
+
+            $emailChanged = strtolower($email) !== strtolower($current['email'] ?? '');
+            if ($emailChanged) {
+                if (!$code) {
+                    $newTemp = bin2hex(random_bytes(32));
+                    $emailCode = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+                    $stmt = $pdo->prepare("INSERT INTO temp_auth (token, user_id, code, type, expires_at) VALUES (?, ?, ?, 'change_email', DATE_ADD(NOW(), INTERVAL 15 MINUTE))");
+                    $stmt->execute([$newTemp, $current_session['user_id'], $emailCode]);
+                    sendResendEmail($email, "Подтверждение смены email: $emailCode", $emailCode);
+                    echo json_encode(['success' => false, 'require_email_verification' => true, 'temp_token' => $newTemp, 'message' => 'Введите код из нового email']);
+                    exit;
+                }
+                $stmt = $pdo->prepare("SELECT code FROM temp_auth WHERE token = ? AND user_id = ? AND type = 'change_email' AND expires_at > NOW()");
+                $stmt->execute([$tempToken, $current_session['user_id']]);
+                $authData = $stmt->fetch();
+                if (!$authData || $authData['code'] !== $code) {
+                    throw new Exception('Неверный код подтверждения');
+                }
+                $pdo->prepare("DELETE FROM temp_auth WHERE token = ?")->execute([$tempToken]);
+            }
 
             $stmt = $pdo->prepare("UPDATE users SET email = ?, username = ? WHERE id = ?");
             $stmt->execute([$email, $username, $current_session['user_id']]);
@@ -898,7 +1037,7 @@ try {
             $new_pass = $_POST['new_password'] ?? '';
             $confirm_pass = $_POST['confirm_password'] ?? '';
 
-            if (strlen($new_pass) < 6) throw new Exception('Новый пароль должен содержать минимум 6 символов');
+            if (strlen($new_pass) < 8) throw new Exception('Новый пароль должен содержать минимум 8 символов');
             if ($new_pass !== $confirm_pass) throw new Exception('Пароли не совпадают');
 
             $stmt = $pdo->prepare("SELECT password_hash FROM users WHERE id = ?");
@@ -1072,6 +1211,50 @@ try {
             break;
 
         /* ---------------- МЕССЕНДЖЕР ---------------- */
+        case 'gif_search':
+            requireAuth();
+            $q = trim($_GET['q'] ?? '');
+            if ($q) {
+                $stmt = $pdo->prepare("SELECT image_url, description FROM gifs WHERE description LIKE ? ORDER BY created_at DESC LIMIT 30");
+                $stmt->execute(["%$q%"]);
+            } else {
+                $stmt = $pdo->prepare("SELECT image_url, description FROM gifs ORDER BY created_at DESC LIMIT 30");
+                $stmt->execute();
+            }
+            $gifs = $stmt->fetchAll();
+            foreach ($gifs as &$g) {
+                $g['description'] = htmlspecialchars($g['description'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            }
+            echo json_encode(['success' => true, 'gifs' => $gifs]);
+            break;
+
+        case 'klipy_gifs':
+            requireAuth();
+            $q = $_GET['q'] ?? '';
+            $key = $GLOBALS['KLIPY_API_KEY'] ?? '';
+            if (!$key || !$q) throw new Exception('Missing params');
+            $url = 'https://api.klipy.com/v1/gifs/search?' . http_build_query(['key' => $key, 'q' => $q, 'limit' => 20]);
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $url,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 8,
+            ]);
+            $resp = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            if ($httpCode !== 200 || !$resp) throw new Exception('GIF search failed');
+            $data = json_decode($resp, true);
+            $gifs = [];
+            $results = $data['results'] ?? $data['data'] ?? [];
+            foreach ($results as $r) {
+                $original = $r['images']['original']['url'] ?? $r['media_formats']['gif']['url'] ?? $r['url'] ?? '';
+                $preview = $r['images']['preview_gif']['url'] ?? $r['media_formats']['tinygif']['url'] ?? $original;
+                if ($original) $gifs[] = ['url' => $original, 'preview' => $preview];
+            }
+            echo json_encode(['success' => true, 'gifs' => $gifs]);
+            break;
+
         case 'conversations':
             requireAuth();
             $stmt = $pdo->prepare("
@@ -1102,6 +1285,7 @@ try {
                     $p['avatar_url'] = htmlspecialchars($p['avatar_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
                 }
                 if ($conv['last_message']) {
+                    $conv['last_message'] = decryptMessage($conv['last_message']);
                     $conv['last_message'] = htmlspecialchars($conv['last_message'], ENT_QUOTES | ENT_HTML5, 'UTF-8');
                 }
             }
@@ -1165,7 +1349,8 @@ try {
             }
 
             foreach ($messages as &$msg) {
-                $msg['content'] = htmlspecialchars($msg['content'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                $msg['content'] = decryptMessage($msg['content'] ?? '');
+                $msg['content'] = htmlspecialchars($msg['content'], ENT_QUOTES | ENT_HTML5, 'UTF-8');
                 $msg['username'] = htmlspecialchars($msg['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
                 $msg['avatar_url'] = htmlspecialchars($msg['avatar_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
             }
@@ -1178,6 +1363,7 @@ try {
             $searchable = isset($_POST['privacy_searchable']) ? (int)(bool)$_POST['privacy_searchable'] : null;
             $messages = isset($_POST['privacy_messages']) ? (int)(bool)$_POST['privacy_messages'] : null;
             $beta = isset($_POST['privacy_beta']) ? (int)(bool)$_POST['privacy_beta'] : null;
+            $no_ads = isset($_POST['privacy_no_ads']) ? (int)(bool)$_POST['privacy_no_ads'] : null;
 
             $updates = [];
             $params = [];
@@ -1192,6 +1378,10 @@ try {
             if ($beta !== null) {
                 $updates[] = 'privacy_beta = ?';
                 $params[] = $beta;
+            }
+            if ($no_ads !== null) {
+                $updates[] = 'privacy_no_ads = ?';
+                $params[] = $no_ads;
             }
 
             if (!empty($updates)) {
@@ -1225,104 +1415,10 @@ try {
 
         case 'check_privacy':
             requireAuth();
-            $stmt = $pdo->prepare("SELECT privacy_searchable, privacy_messages, privacy_beta FROM users WHERE id = ?");
+            $stmt = $pdo->prepare("SELECT privacy_searchable, privacy_messages, privacy_beta, privacy_no_ads FROM users WHERE id = ?");
             $stmt->execute([$current_session['user_id']]);
             $privacy = $stmt->fetch();
             echo json_encode(['success' => true, 'privacy' => $privacy]);
-            break;
-
-        case 'signal_upload':
-            requireAuth();
-            $uid = (int)$current_session['user_id'];
-            $id_dh_pub = trim($_POST['identity_dh_pub'] ?? '');
-            $id_ds_pub = trim($_POST['identity_ds_pub'] ?? '');
-            $spk_pub = trim($_POST['spk_pub'] ?? '');
-            $spk_sig = trim($_POST['spk_sig'] ?? '');
-            $otpks_json = trim($_POST['otpks'] ?? '[]');
-
-            if ($id_dh_pub) {
-                $pdo->prepare("INSERT INTO signal_prekeys (user_id, key_id, public_key, is_signed) VALUES (?, 0, ?, 0) ON DUPLICATE KEY UPDATE public_key = ?")
-                    ->execute([$uid, $id_dh_pub, $id_dh_pub]);
-            }
-            if ($id_ds_pub) {
-                $pdo->prepare("INSERT INTO signal_prekeys (user_id, key_id, public_key, is_signed) VALUES (?, 1, ?, 0) ON DUPLICATE KEY UPDATE public_key = ?")
-                    ->execute([$uid, $id_ds_pub, $id_ds_pub]);
-            }
-            if ($spk_pub && $spk_sig) {
-                $pdo->prepare("INSERT INTO signal_prekeys (user_id, key_id, public_key, signature, is_signed) VALUES (?, 2, ?, ?, 1) ON DUPLICATE KEY UPDATE public_key = ?, signature = ?")
-                    ->execute([$uid, $spk_pub, $spk_sig, $spk_pub, $spk_sig]);
-            }
-
-            $otpks = json_decode($otpks_json, true);
-            if (is_array($otpks)) {
-                $stmt_del = $pdo->prepare("DELETE FROM signal_prekeys WHERE user_id = ? AND is_signed = 0 AND key_id > 2 AND is_used = 0");
-                $stmt_del->execute([$uid]);
-                foreach ($otpks as $i => $pub) {
-                    if (!is_string($pub) || !$pub) continue;
-                    $kid = 100 + $i;
-                    $pdo->prepare("INSERT INTO signal_prekeys (user_id, key_id, public_key, is_signed) VALUES (?, ?, ?, 0) ON DUPLICATE KEY UPDATE public_key = ?")
-                        ->execute([$uid, $kid, $pub, $pub]);
-                }
-            }
-
-            echo json_encode(['success' => true]);
-            break;
-
-        case 'signal_bundle':
-            requireAuth();
-            $target_id = (int)($_GET['user_id'] ?? 0);
-            if (!$target_id) throw new Exception('Invalid user');
-
-            $stmt = $pdo->prepare("SELECT public_key FROM signal_prekeys WHERE user_id = ? AND key_id = 0 LIMIT 1");
-            $stmt->execute([$target_id]);
-            $id_dh = $stmt->fetchColumn();
-
-            $stmt = $pdo->prepare("SELECT public_key FROM signal_prekeys WHERE user_id = ? AND key_id = 1 LIMIT 1");
-            $stmt->execute([$target_id]);
-            $id_ds = $stmt->fetchColumn();
-
-            $stmt = $pdo->prepare("SELECT public_key, signature FROM signal_prekeys WHERE user_id = ? AND key_id = 2 LIMIT 1");
-            $stmt->execute([$target_id]);
-            $spk = $stmt->fetch();
-
-            $otpk_pub = null;
-            $otpk_id = null;
-            $stmt = $pdo->prepare("SELECT id, key_id, public_key FROM signal_prekeys WHERE user_id = ? AND is_signed = 0 AND key_id > 2 AND is_used = 0 ORDER BY key_id ASC LIMIT 1");
-            $stmt->execute([$target_id]);
-            $otpk = $stmt->fetch();
-            if ($otpk) {
-                $otpk_pub = $otpk['public_key'];
-                $otpk_id = $otpk['key_id'];
-            }
-
-            echo json_encode([
-                'success' => true,
-                'identity_dh_pub' => $id_dh ?: '',
-                'identity_ds_pub' => $id_ds ?: '',
-                'spk_pub' => $spk ? $spk['public_key'] : '',
-                'spk_sig' => $spk ? $spk['signature'] : '',
-                'otpk_pub' => $otpk_pub,
-                'otpk_id' => $otpk_id,
-            ]);
-            break;
-
-        case 'signal_consume':
-            requireAuth();
-            $otpk_id = (int)($_POST['otpk_id'] ?? 0);
-            if ($otpk_id) {
-                $pdo->prepare("UPDATE signal_prekeys SET is_used = 1 WHERE user_id = ? AND key_id = ?")
-                    ->execute([$current_session['user_id'], $otpk_id]);
-            }
-            echo json_encode(['success' => true]);
-            break;
-
-        case 'signal_key':
-            requireAuth();
-            $target_id = (int)($_GET['user_id'] ?? $current_session['user_id']);
-            $stmt = $pdo->prepare("SELECT public_key FROM signal_prekeys WHERE user_id = ? AND key_id = 0 LIMIT 1");
-            $stmt->execute([$target_id]);
-            $key = $stmt->fetchColumn();
-            echo json_encode(['success' => true, 'public_key' => $key ?: '']);
             break;
 
         case 'message_send':
@@ -1362,8 +1458,10 @@ try {
                 if ($b->fetch()) throw new Exception('Пользователь заблокирован');
             }
 
+            $encrypted_content = encryptMessage($content);
+
             $stmt = $pdo->prepare("INSERT INTO messages (conversation_id, sender_id, content, reply_to) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$conv_id, $uid, $content, $reply_to]);
+            $stmt->execute([$conv_id, $uid, $encrypted_content, $reply_to]);
             $msg_id = (int)$pdo->lastInsertId();
 
             $stmt_participants = $pdo->prepare("SELECT user_id FROM conversation_participants WHERE conversation_id = ? AND user_id != ?");
@@ -1379,6 +1477,7 @@ try {
             ");
             $stmt_msg->execute([$msg_id]);
             $message = $stmt_msg->fetch();
+            $message['content'] = $content;
 
             $stmt_s = $pdo->prepare("SELECT user_id, status FROM message_status WHERE message_id = ?");
             $stmt_s->execute([$msg_id]);
@@ -1552,7 +1651,7 @@ try {
                 if ($b->fetch()) throw new Exception('Пользователь заблокирован');
             }
             $pdo->prepare("INSERT INTO pending_messages (conversation_id, sender_id, content) VALUES (?, ?, ?)")
-                ->execute([$conv_id, $uid, $content]);
+                ->execute([$conv_id, $uid, encryptMessage($content)]);
             echo json_encode(['success' => true]);
             break;
 
