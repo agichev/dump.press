@@ -144,9 +144,9 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
 
-    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=31" as="style">
-    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/script.js?v=31" as="script">
-    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=31">
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=44" as="style">
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/script.js?v=44" as="script">
+    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=44">
 
     <?php if ($recaptcha_enabled): ?>
     <style>.grecaptcha-badge{visibility:hidden!important;opacity:0!important}</style>
@@ -761,10 +761,10 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
                         <span id="chatPartnerName" class="font-bold" style="display:block;font-size:0.95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
                     </div>
                 </div>
-                <div id="chatMessages" class="chat-card-messages" style="display:flex;flex-direction:column-reverse;overflow-y:auto;overscroll-behavior:contain;scroll-behavior:auto;">
-                    <div id="typingIndicator" class="typing-indicator hidden"><div class="typing-dots"><span></span><span></span><span></span></div><span id="typingText"></span></div>
-                    <div id="chatMessagesInner" style="display:flex;flex-direction:column-reverse;gap:2px;flex:0 0 auto;min-height:0;"></div>
+                <div id="chatMessages" class="chat-card-messages">
                     <div id="chatLoadMore" class="chat-load-more hidden"><button class="load-more-btn" onclick="loadMoreMessages()">Загрузить ещё</button></div>
+                    <div id="chatMessagesInner"></div>
+                    <div id="typingIndicator" class="typing-indicator hidden"><div class="typing-dots"><span></span><span></span><span></span></div><span id="typingText"></span></div>
                 </div>
                 <div id="replyIndicator" class="reply-indicator hidden">
                     <div class="reply-info"><i class="ph ph-arrow-u-down-left"></i><span>Ответ <b id="replyToName"></b></span></div>
@@ -878,7 +878,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
             </form>
         </div>
     </div>
-    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=31"></script>
+    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=44"></script>
 
     <?php if ($is_mobile): ?>
     <style>

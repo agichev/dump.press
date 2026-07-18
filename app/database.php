@@ -263,6 +263,22 @@ try {
 
     try { $pdo->exec("ALTER TABLE conversation_participants ADD COLUMN muted TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {}
 
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS uploaded_files (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            file_name VARCHAR(500) NOT NULL,
+            file_size BIGINT NOT NULL,
+            file_type VARCHAR(255) NOT NULL,
+            r2_key VARCHAR(500) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            INDEX idx_uf_user (user_id, created_at),
+            INDEX idx_uf_expires (expires_at)
+        );
+    ");
+
     $pdo->exec("UPDATE posts SET slug = SUBSTRING(MD5(RAND()), 1, 10) WHERE slug IS NULL OR slug = ''");
 
 } catch (PDOException $e) {

@@ -63,7 +63,7 @@ if ($action === 'proxy') {
     $parsed = parse_url($url);
     $is_allowed_host = false;
     if (isset($parsed['host'])) {
-        $allowed_domains = ['ibb.co', 'i.ibb.co', 'imgbb.com', 'i.imgbb.com', 'ui-avatars.com'];
+        $allowed_domains = ['ibb.co', 'i.ibb.co', 'imgbb.com', 'i.imgbb.com', 'ui-avatars.com', 'opengifs.webounty.ru'];
         if (in_array(strtolower($parsed['host']), $allowed_domains, true)) {
             $is_allowed_host = true;
         }
@@ -1214,45 +1214,154 @@ try {
         case 'gif_search':
             requireAuth();
             $q = trim($_GET['q'] ?? '');
-            if ($q) {
-                $stmt = $pdo->prepare("SELECT image_url, description FROM gifs WHERE description LIKE ? ORDER BY created_at DESC LIMIT 30");
-                $stmt->execute(["%$q%"]);
-            } else {
-                $stmt = $pdo->prepare("SELECT image_url, description FROM gifs ORDER BY created_at DESC LIMIT 30");
-                $stmt->execute();
-            }
-            $gifs = $stmt->fetchAll();
-            foreach ($gifs as &$g) {
-                $g['description'] = htmlspecialchars($g['description'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
-            }
-            echo json_encode(['success' => true, 'gifs' => $gifs]);
-            break;
-
-        case 'klipy_gifs':
-            requireAuth();
-            $q = $_GET['q'] ?? '';
-            $key = $GLOBALS['KLIPY_API_KEY'] ?? '';
-            if (!$key || !$q) throw new Exception('Missing params');
-            $url = 'https://api.klipy.com/v1/gifs/search?' . http_build_query(['key' => $key, 'q' => $q, 'limit' => 20]);
+            $limit = min((int)($_GET['limit'] ?? 20), 50);
+            $endpoint = $q
+                ? 'https://opengifs.webounty.ru/api/v1/gifs/search?' . http_build_query(['q' => $q, 'limit' => $limit])
+                : 'https://opengifs.webounty.ru/api/v1/gifs/trending?' . http_build_query(['limit' => $limit]);
             $ch = curl_init();
             curl_setopt_array($ch, [
-                CURLOPT_URL => $url,
+                CURLOPT_URL => $endpoint,
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_TIMEOUT => 8,
+                CURLOPT_USERAGENT => 'Dump/6.6',
             ]);
             $resp = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
-            if ($httpCode !== 200 || !$resp) throw new Exception('GIF search failed');
+            if ($httpCode !== 200 || !$resp) throw new Exception('GIF fetch failed');
             $data = json_decode($resp, true);
             $gifs = [];
-            $results = $data['results'] ?? $data['data'] ?? [];
-            foreach ($results as $r) {
-                $original = $r['images']['original']['url'] ?? $r['media_formats']['gif']['url'] ?? $r['url'] ?? '';
-                $preview = $r['images']['preview_gif']['url'] ?? $r['media_formats']['tinygif']['url'] ?? $original;
-                if ($original) $gifs[] = ['url' => $original, 'preview' => $preview];
+            foreach ($data['data'] ?? [] as $r) {
+                $gifs[] = [
+                    'id' => $r['id'] ?? '',
+                    'title' => $r['title'] ?? '',
+                    'gif_url' => $r['gif_url'] ?? '',
+                ];
             }
             echo json_encode(['success' => true, 'gifs' => $gifs]);
+            break;
+
+        case 'upload_file':
+            requireAuth();
+            $uid = (int)$current_session['user_id'];
+
+            if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+                throw new Exception('Файл не получен');
+            }
+            $file = $_FILES['file'];
+            $fileName = $file['name'];
+            $fileSize = $file['size'];
+            $fileType = mime_content_type($file['tmp_name']) ?: ($file['type'] ?? 'application/octet-stream');
+
+            if ($fileSize > 100 * 1024 * 1024) throw new Exception('Файл слишком большой (макс 100 МБ)');
+            if (strpos($fileType, 'image/') === 0) throw new Exception('Используйте обычную загрузку для изображений');
+
+            // Очистка просроченных файлов
+            $cleanStmt = $pdo->prepare("SELECT id, r2_key FROM uploaded_files WHERE expires_at < NOW()");
+            $cleanStmt->execute();
+            foreach ($cleanStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                r2_delete_object($row['r2_key']);
+            }
+            $pdo->prepare("DELETE FROM uploaded_files WHERE expires_at < NOW()")->execute();
+
+            // Rate limit: 7 файлов за 12 часов
+            if (!checkRateLimit('r2_file_' . $uid, 7, 12 * 3600)) {
+                throw new Exception('Лимит 7 файлов за 12 часов исчерпан');
+            }
+
+            $ext = pathinfo($fileName, PATHINFO_EXTENSION);
+            $r2Key = 'files/' . $uid . '_' . bin2hex(random_bytes(8)) . ($ext ? '.' . $ext : '');
+
+            $uploadUrl = r2_presigned_url('PUT', $r2Key, 300, $fileType);
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $uploadUrl,
+                CURLOPT_CUSTOMREQUEST => 'PUT',
+                CURLOPT_POSTFIELDS => file_get_contents($file['tmp_name']),
+                CURLOPT_HTTPHEADER => ['Content-Type: ' . $fileType],
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 120,
+            ]);
+            curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode !== 200) throw new Exception('Ошибка загрузки в хранилище');
+
+            $expiresAt = date('Y-m-d H:i:s', time() + 86400);
+            $stmt = $pdo->prepare("INSERT INTO uploaded_files (user_id, file_name, file_size, file_type, r2_key, expires_at) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$uid, $fileName, $fileSize, $fileType, $r2Key, $expiresAt]);
+
+            $downloadUrl = r2_public_url($r2Key);
+            $dumpTag = '[dumpfile:' . $r2Key . ':' . urlencode($fileName) . ':' . $fileSize . ':' . urlencode($fileType) . ']';
+            echo json_encode([
+                'success' => true,
+                'tag' => $dumpTag,
+                'file_key' => $r2Key,
+                'download_url' => $downloadUrl,
+                'file_name' => $fileName,
+                'file_size' => $fileSize,
+            ]);
+            break;
+
+        case 'file_download':
+            // Периодическая очистка просроченных
+            if (mt_rand(0, 9) === 0) {
+                $cleanStmt = $pdo->prepare("SELECT id, r2_key FROM uploaded_files WHERE expires_at < NOW()");
+                $cleanStmt->execute();
+                foreach ($cleanStmt->fetchAll(PDO::FETCH_ASSOC) as $exp) {
+                    r2_delete_object($exp['r2_key']);
+                }
+                $pdo->prepare("DELETE FROM uploaded_files WHERE expires_at < NOW()")->execute();
+            }
+
+            $fileKey = trim($_GET['key'] ?? '');
+            if (!$fileKey) { http_response_code(404); exit; }
+
+            $stmt = $pdo->prepare("SELECT file_name, file_type, r2_key, expires_at FROM uploaded_files WHERE r2_key = ?");
+            $stmt->execute([$fileKey]);
+            $file = $stmt->fetch();
+
+            if (!$file) { http_response_code(404); exit; }
+            if (strtotime($file['expires_at']) < time()) {
+                r2_delete_object($file['r2_key']);
+                $pdo->prepare("DELETE FROM uploaded_files WHERE r2_key = ?")->execute([$fileKey]);
+                http_response_code(410);
+                echo 'Файл удалён (истёк срок хранения)';
+                exit;
+            }
+
+            $inline = ($_GET['inline'] ?? '') === '1';
+
+            if ($inline) {
+                $getUrl = r2_presigned_url('GET', $fileKey, 3600);
+                header('Content-Type: ' . ($file['file_type'] ?: 'application/octet-stream'));
+                header('Content-Disposition: inline; filename="' . addcslashes($file['file_name'], '"') . '"');
+                header('Cache-Control: public, max-age=3600');
+                header('Accept-Ranges: bytes');
+
+                $ch = curl_init();
+                curl_setopt_array($ch, [
+                    CURLOPT_URL => $getUrl,
+                    CURLOPT_RETURNTRANSFER => false,
+                    CURLOPT_TIMEOUT => 120,
+                    CURLOPT_WRITEFUNCTION => function($ch, $data) {
+                        echo $data;
+                        return strlen($data);
+                    },
+                ]);
+                curl_exec($ch);
+                curl_close($ch);
+                exit;
+            }
+
+            $extraParams = [
+                'response-content-type' => $file['file_type'] ?: 'application/octet-stream',
+                'response-content-disposition' => 'attachment; filename="' . addcslashes($file['file_name'], '"') . '"',
+            ];
+            $downloadUrl = r2_presigned_url('GET', $fileKey, 3600, '', $extraParams);
+            header('Location: ' . $downloadUrl);
+            exit;
             break;
 
         case 'conversations':

@@ -288,6 +288,31 @@
             return '***.***.***.***';
         };
 
+        const formatFileSize = (bytes) => {
+            if (bytes < 1024) return bytes + ' Б';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' КБ';
+            if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' МБ';
+            return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' ГБ';
+        };
+
+        const getFileIcon = (ext) => {
+            const map = {
+                pdf: '<i class="ph ph-file-pdf"></i>',
+                doc: '<i class="ph ph-file-doc"></i>', docx: '<i class="ph ph-file-doc"></i>',
+                xls: '<i class="ph ph-file-xls"></i>', xlsx: '<i class="ph ph-file-xls"></i>',
+                ppt: '<i class="ph ph-file-ppt"></i>', pptx: '<i class="ph ph-file-ppt"></i>',
+                zip: '<i class="ph ph-file-zip"></i>', rar: '<i class="ph ph-file-zip"></i>', '7z': '<i class="ph ph-file-zip"></i>',
+                mp3: '<i class="ph ph-file-audio"></i>', wav: '<i class="ph ph-file-audio"></i>', ogg: '<i class="ph ph-file-audio"></i>',
+                mp4: '<i class="ph ph-file-video"></i>', mov: '<i class="ph ph-file-video"></i>', avi: '<i class="ph ph-file-video"></i>', mkv: '<i class="ph ph-file-video"></i>',
+                txt: '<i class="ph ph-file-text"></i>', csv: '<i class="ph ph-file-text"></i>',
+                apk: '<i class="ph ph-android-logo"></i>',
+                exe: '<i class="ph ph-windows-logo"></i>',
+                jpg: '<i class="ph ph-file-image"></i>', jpeg: '<i class="ph ph-file-image"></i>', png: '<i class="ph ph-file-image"></i>', gif: '<i class="ph ph-file-image"></i>', webp: '<i class="ph ph-file-image"></i>', svg: '<i class="ph ph-file-image"></i>',
+                html: '<i class="ph ph-file-code"></i>', css: '<i class="ph ph-file-code"></i>', js: '<i class="ph ph-file-code"></i>', php: '<i class="ph ph-file-code"></i>', json: '<i class="ph ph-file-code"></i>',
+            };
+            return map[ext] || '<i class="ph ph-file"></i>';
+        };
+
         const resizeTextarea = (el) => { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; };
 
         function chatInputKeydown(e) {
@@ -3193,16 +3218,27 @@
 
                 case 'messages': {
                     if (data.conversation_id) {
+                        const page = data.messages || [];
                         if (!data.before) {
-                            messengerMessages[data.conversation_id] = data.messages || [];
+                            messengerMessages[data.conversation_id] = page;
                         } else {
                             const existing = messengerMessages[data.conversation_id] || [];
-                            messengerMessages[data.conversation_id] = [...(data.messages || []), ...existing];
+                            const older = page.filter(message => !existing.some(item => item.id == message.id));
+                            messengerMessages[data.conversation_id] = [...older, ...existing];
                         }
+                        messageHistoryHasMore[data.conversation_id] = page.length >= MESSAGE_PAGE_SIZE;
                         if (currentConvId == data.conversation_id) {
+                            updateChatHistoryControls();
                             renderMessages(!!data.before);
                         }
                     }
+                    if (data.before && historyLoadConversationId == data.conversation_id) {
+                        clearTimeout(historyLoadTimer);
+                        historyLoadTimer = null;
+                        historyLoadConversationId = null;
+                        isLoadingMoreMessages = false;
+                    }
+                    updateChatHistoryControls();
                     break;
                 }
 
@@ -3218,17 +3254,16 @@
                                 el.classList.add('hidden');
                             }, 10000);
                             const sc = document.getElementById('chatMessages');
-                            // column-reverse: внизу scrollTop = 0
-                            if (sc && sc.scrollTop < 80) {
-                                sc.scrollTo({ top: 0, behavior: 'smooth' });
+                            if (isChatNearBottom(sc)) {
+                                sc.scrollTop = sc.scrollHeight;
                             }
                         } else {
                             clearTimeout(el._typingTimer);
                             const sc = document.getElementById('chatMessages');
-                            const nearBot = sc && sc.scrollTop < 80;
+                            const nearBot = isChatNearBottom(sc);
                             el.classList.add('hidden');
                             if (sc && nearBot) {
-                                sc.scrollTo({ top: 0, behavior: 'smooth' });
+                                sc.scrollTop = sc.scrollHeight;
                             }
                         }
                     }
@@ -3572,7 +3607,15 @@
             const chatMessages = document.getElementById('chatMessages');
             const chatMessagesInner = document.getElementById('chatMessagesInner');
             if (chatMessagesInner) chatMessagesInner.innerHTML = '';
-            if (chatMessages) chatMessages.scrollTop = 0;
+            if (chatMessages) {
+                chatMessages.scrollTop = 0;
+                chatMessages.onscroll = onChatScroll;
+            }
+            clearTimeout(historyLoadTimer);
+            historyLoadTimer = null;
+            historyLoadConversationId = null;
+            isLoadingMoreMessages = false;
+            messageHistoryHasMore[conv.id] = true;
             document.getElementById('chatLoadMore').classList.add('hidden');
             if (isBlocked) {
                 chatForm.style.display = 'none';
@@ -3602,7 +3645,11 @@
                 const data = await res.json();
                 if (data.success && data.messages) {
                     messengerMessages[convId] = data.messages;
-                    if (currentConvId === convId) { renderMessages(); }
+                    messageHistoryHasMore[convId] = data.messages.length >= MESSAGE_PAGE_SIZE;
+                    if (currentConvId === convId) {
+                        updateChatHistoryControls();
+                        renderMessages();
+                    }
                 }
             } catch (e) {
                 console.error('loadMessagesHttp error:', e);
@@ -3611,33 +3658,108 @@
 
         function renderMsgBody(text) {
             if (!text) return '';
+
+            const dfRegex = /\[dumpfile:([^:\]]+):([^:]*):(\d+):([^\]]*)\]/g;
+            const dfReplacements = [];
+            const DF_MARKER = '\uE000';
+            let processed = text.replace(dfRegex, (match, key, name, size, type) => {
+                const idx = dfReplacements.length;
+                dfReplacements.push({ key, name, size, type });
+                return DF_MARKER + 'DF' + idx + DF_MARKER;
+            });
+
             const urlRegex = /(https?:\/\/[^\s<>"']+)/g;
             const parts = [];
             let lastIdx = 0;
             let match;
-            while ((match = urlRegex.exec(text)) !== null) {
+            while ((match = urlRegex.exec(processed)) !== null) {
                 if (match.index > lastIdx) {
-                    parts.push({ type: 'text', content: text.substring(lastIdx, match.index) });
+                    parts.push({ type: 'text', content: processed.substring(lastIdx, match.index) });
                 }
                 const url = match[0];
-                const isImage = /\.(gif|png|jpg|jpeg|webp)(\?.*)?$/i.test(url) || url.includes('i.ibb.co') || url.includes('ibb.co');
+                const isImage = /\.(gif|png|jpg|jpeg|webp)(\?.*)?$/i.test(url) || url.includes('i.ibb.co') || url.includes('ibb.co') || /opengifs\.webounty\.ru\/g\//.test(url);
                 parts.push({ type: isImage ? 'image' : 'link', content: url });
                 lastIdx = match.index + match[0].length;
             }
-            if (lastIdx < text.length) {
-                parts.push({ type: 'text', content: text.substring(lastIdx) });
+            if (lastIdx < processed.length) {
+                parts.push({ type: 'text', content: processed.substring(lastIdx) });
             }
-            if (parts.length === 0) return linkify(escHtml(text));
-            return parts.map(p => {
+            if (parts.length === 0) parts.push({ type: 'text', content: processed });
+
+            let html = parts.map(p => {
                 if (p.type === 'text') return linkify(escHtml(p.content));
                 if (p.type === 'image') {
                     const proxyUrl = getProxyUrl(p.content);
                     const safeUrl = p.content.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                     return `<div class="msg-image-wrapper"><img src="${proxyUrl}" class="msg-image" loading="lazy" onclick="event.stopPropagation(); viewChatImage('${safeUrl}')" onerror="this.style.display='none'" oncontextmenu="event.stopPropagation(); event.preventDefault()"></div>`;
                 }
-                const h = p.content.replace(/&quot;/g, '%22').replace(/</g, '%3C').replace(/>/g, '%3E');
-                return '<a href="' + h + '" target="_blank" rel="noopener noreferrer" style="color: #ffffff; text-decoration: underline; word-break: break-word;" onclick="event.stopPropagation()">' + p.content + '</a>';
+                const h = p.content.replace(/&quot;/g, '%22').replace(/</g, '%3C').replace(/>/g, '%3E').replace(/&amp;/g, '&');
+                return '<a href="' + h + '" target="_blank" rel="noopener noreferrer" class="msg-link" onclick="event.stopPropagation()">' + p.content + '</a>';
             }).join('');
+
+            const dfRestoreRegex = new RegExp(DF_MARKER + 'DF(\\d+)' + DF_MARKER + '\\n?', 'g');
+            html = html.replace(dfRestoreRegex, (m, idx) => {
+                const d = dfReplacements[parseInt(idx)];
+                if (!d) return '';
+                const decodedName = decodeURIComponent(d.name || 'file');
+                const ext = (decodedName || '').split('.').pop().toLowerCase();
+                const mimeType = decodeURIComponent(d.type || '');
+                const isVideo = mimeType.startsWith('video/') || ['mp4','mov','avi','mkv','webm'].includes(ext);
+                const isAudio = mimeType.startsWith('audio/') || ['mp3','wav','ogg','m4a','flac','aac','wma'].includes(ext);
+                const downloadUrl = BASE_PATH + '/index.php?api=file_download&key=' + encodeURIComponent(d.key);
+                const inlineUrl = BASE_PATH + '/index.php?api=file_download&inline=1&key=' + encodeURIComponent(d.key);
+                const safeFileNameAttr = encodeURIComponent(decodedName).replace(/'/g, "%27");
+
+                if (isVideo) {
+                    const playerId = 'dumpplayer_' + Math.random().toString(36).slice(2, 10);
+                    return `<div class="dump-player dump-player-video" data-player-id="${playerId}" data-src="${inlineUrl}" data-download="${downloadUrl}" data-filename="${safeFileNameAttr}">
+                        <video id="${playerId}" preload="metadata" playsinline></video>
+                        <div class="dump-player-overlay"><button class="dump-player-big-play" aria-label="Play"><i class="ph-fill ph-play"></i></button></div>
+                        <div class="dump-player-controls">
+                            <div class="dump-player-progress"><div class="dump-player-progress-track"></div><div class="dump-player-progress-fill"></div><div class="dump-player-progress-handle"></div></div>
+                            <div class="dump-player-row">
+                                <button class="dump-player-btn dump-player-play" aria-label="Play/Pause"><i class="ph-fill ph-play"></i></button>
+                                <div class="dump-player-times"><span class="dump-player-time">0:00</span><span>/</span><span class="dump-player-duration">0:00</span></div>
+                                <div class="dump-player-actions">
+                                    <div class="dump-player-volume-wrap">
+                                        <button class="dump-player-btn dump-player-mute" aria-label="Mute"><i class="ph-fill ph-speaker-high"></i></button>
+                                        <div class="dump-player-volume"><div class="dump-player-volume-fill"></div></div>
+                                    </div>
+                                    <button class="dump-player-btn dump-player-download" aria-label="Download" onclick="event.stopPropagation(); downloadDumpMedia(this)"><i class="ph ph-download-simple"></i></button>
+                                    <button class="dump-player-btn dump-player-fullscreen" aria-label="Fullscreen"><i class="ph ph-corners-out"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="dump-player-loader"><div class="spinner"></div></div>
+                    </div>`;
+                }
+
+                if (isAudio) {
+                    const playerId = 'dumpplayer_' + Math.random().toString(36).slice(2, 10);
+                    return `<div class="msg-audio-widget" data-player-id="${playerId}" data-src="${inlineUrl}" data-download="${downloadUrl}" data-filename="${safeFileNameAttr}">
+                        <audio id="${playerId}" preload="metadata"></audio>
+                        <button class="msg-audio-play" aria-label="Play/Pause"><i class="ph-fill ph-play"></i></button>
+                        <div class="msg-audio-col">
+                            <span class="msg-audio-title">${escHtml(decodedName)}</span>
+                            <div class="msg-audio-row">
+                                <div class="msg-audio-progress"><div class="msg-audio-progress-track"></div><div class="msg-audio-progress-fill"></div><div class="msg-audio-progress-handle"></div></div>
+                                <span class="msg-audio-time">0:00</span>
+                            </div>
+                        </div>
+                        <a href="${downloadUrl}" class="msg-audio-download" onclick="event.stopPropagation();" download><i class="ph ph-download-simple"></i></a>
+                    </div>`;
+                }
+
+                const icon = getFileIcon(ext);
+                return `<div class="msg-file-widget" onclick="event.stopPropagation();">
+                    <div class="msg-file-icon">${icon}</div>
+                    <span class="msg-file-name">${escHtml(decodedName)}</span>
+                    <span class="msg-file-meta">${formatFileSize(parseInt(d.size))}</span>
+                    <a href="${downloadUrl}" class="msg-file-dl" onclick="event.stopPropagation();" download><i class="ph ph-download-simple"></i></a>
+                </div>`;
+            });
+
+            return html;
         }
 
         function viewChatImage(url) {
@@ -3714,9 +3836,318 @@
 
         window.viewChatImage = viewChatImage;
 
+        function formatPlayerTime(seconds) {
+            if (!isFinite(seconds) || isNaN(seconds)) return '0:00';
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.floor(seconds % 60);
+            if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+            return `${m}:${String(s).padStart(2,'0')}`;
+        }
+
+        function downloadDumpMedia(btn) {
+            const player = btn.closest('.dump-player, .msg-audio-widget');
+            if (!player) return;
+            const url = player.dataset.download;
+            let filename = player.dataset.filename || 'download';
+            try { filename = decodeURIComponent(filename); } catch(e) {}
+            if (!url) return;
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => a.remove(), 100);
+        }
+        window.downloadDumpMedia = downloadDumpMedia;
+
+        let __dumpDragState = { target: null, type: null };
+        const handleDumpDragMove = (clientX) => {
+            if (!__dumpDragState.target) return;
+            const player = __dumpDragState.target.closest('.dump-player, .msg-audio-widget');
+            const media = player?.querySelector('video, audio');
+            if (!media) return;
+            const rect = __dumpDragState.target.getBoundingClientRect();
+            const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+            if (__dumpDragState.type === 'progress' && media.duration) {
+                media.currentTime = x * media.duration;
+                const fill = player.querySelector('.dump-player-progress-fill, .msg-audio-progress-fill');
+                const handle = player.querySelector('.dump-player-progress-handle');
+                const time = player.querySelector('.dump-player-time, .msg-audio-time');
+                if (fill) fill.style.width = (x * 100) + '%';
+                if (handle) handle.style.left = (x * 100) + '%';
+                if (time) time.textContent = formatPlayerTime(media.currentTime);
+            }
+            if (__dumpDragState.type === 'volume') {
+                media.volume = x;
+                media.muted = x === 0;
+                const fill = player.querySelector('.dump-player-volume-fill');
+                if (fill) fill.style.width = (x * 100) + '%';
+            }
+        };
+        window.addEventListener('mousemove', (e) => handleDumpDragMove(e.clientX));
+        window.addEventListener('touchmove', (e) => { if (__dumpDragState.target) handleDumpDragMove(e.touches[0].clientX); }, {passive: true});
+        window.addEventListener('mouseup', () => { __dumpDragState = { target: null, type: null }; });
+        window.addEventListener('touchend', () => { __dumpDragState = { target: null, type: null }; }, {passive: true});
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.dump-player, .msg-audio-widget')) return;
+            document.querySelectorAll('.dump-player-volume-wrap.volume-open').forEach(el => el.classList.remove('volume-open'));
+        });
+
+        function initDumpPlayers(container) {
+            const root = container || document.getElementById('chatMessagesInner') || document.body;
+
+            root.querySelectorAll('.msg-audio-widget:not([data-dump-initialized])').forEach(player => {
+                player.setAttribute('data-dump-initialized', '1');
+                const media = player.querySelector('audio');
+                if (!media) return;
+                media.src = player.dataset.src;
+                media.load();
+
+                const playBtn = player.querySelector('.msg-audio-play');
+                const progressWrap = player.querySelector('.msg-audio-progress');
+                const progressFill = player.querySelector('.msg-audio-progress-fill');
+                const progressHandle = player.querySelector('.msg-audio-progress-handle');
+                const timeEl = player.querySelector('.msg-audio-time');
+
+                const updatePlayIcon = () => {
+                    if (playBtn) playBtn.innerHTML = media.paused ? '<i class="ph-fill ph-play"></i>' : '<i class="ph-fill ph-pause"></i>';
+                    player.classList.toggle('playing', !media.paused);
+                };
+
+                const updateTime = () => {
+                    if (timeEl) timeEl.textContent = formatPlayerTime(media.currentTime);
+                    const pct = media.duration ? (media.currentTime / media.duration) * 100 : 0;
+                    if (progressFill) progressFill.style.width = pct + '%';
+                    if (progressHandle) progressHandle.style.left = pct + '%';
+                };
+
+                const togglePlay = (e) => {
+                    e && e.stopPropagation();
+                    if (media.paused) media.play().catch(() => {});
+                    else media.pause();
+                };
+
+                const seekAudio = (clientX) => {
+                    if (!media.duration) return;
+                    const rect = progressWrap.getBoundingClientRect();
+                    const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+                    media.currentTime = x * media.duration;
+                    updateTime();
+                };
+
+                if (progressWrap) {
+                    progressWrap.addEventListener('mousedown', (e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        player.setAttribute('data-dragging', 'true');
+                        const move = (ev) => seekAudio(ev.clientX);
+                        const up = () => {
+                            player.removeAttribute('data-dragging');
+                            window.removeEventListener('mousemove', move);
+                            window.removeEventListener('mouseup', up);
+                        };
+                        window.addEventListener('mousemove', move);
+                        window.addEventListener('mouseup', up);
+                        seekAudio(e.clientX);
+                    });
+                    progressWrap.addEventListener('touchstart', (e) => {
+                        e.stopPropagation();
+                        player.setAttribute('data-dragging', 'true');
+                        const move = (ev) => seekAudio(ev.touches[0].clientX);
+                        const up = () => {
+                            player.removeAttribute('data-dragging');
+                            window.removeEventListener('touchmove', move);
+                            window.removeEventListener('touchend', up);
+                        };
+                        window.addEventListener('touchmove', move, { passive: true });
+                        window.addEventListener('touchend', up);
+                        seekAudio(e.touches[0].clientX);
+                    }, { passive: true });
+                    progressWrap.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        seekAudio(e.clientX);
+                    });
+                }
+
+                if (playBtn) playBtn.addEventListener('click', togglePlay);
+                player.addEventListener('click', (e) => {
+                    if (e.target.closest('.msg-audio-play, .msg-audio-download, .msg-audio-progress')) return;
+                    togglePlay(e);
+                });
+                player.addEventListener('contextmenu', (e) => { e.stopPropagation(); e.preventDefault(); });
+
+                media.addEventListener('play', updatePlayIcon);
+                media.addEventListener('pause', updatePlayIcon);
+                media.addEventListener('timeupdate', updateTime);
+                media.addEventListener('loadedmetadata', updateTime);
+                media.addEventListener('ended', () => { media.currentTime = 0; updatePlayIcon(); updateTime(); });
+
+                updatePlayIcon();
+                updateTime();
+            });
+
+            root.querySelectorAll('.dump-player:not([data-dump-initialized])').forEach(player => {
+                player.setAttribute('data-dump-initialized', '1');
+                const media = player.querySelector('video, audio');
+                if (!media) return;
+                media.src = player.dataset.src;
+                media.load();
+
+                const isVideo = player.classList.contains('dump-player-video');
+                const playBtn = player.querySelector('.dump-player-play');
+                const bigPlay = player.querySelector('.dump-player-big-play');
+                const muteBtn = player.querySelector('.dump-player-mute');
+                const progressWrap = player.querySelector('.dump-player-progress');
+                const progressFill = player.querySelector('.dump-player-progress-fill');
+                const progressHandle = player.querySelector('.dump-player-progress-handle');
+                const volumeWrapOuter = player.querySelector('.dump-player-volume-wrap');
+                const volumeWrap = player.querySelector('.dump-player-volume');
+                const volumeFill = player.querySelector('.dump-player-volume-fill');
+                const timeEl = player.querySelector('.dump-player-time');
+                const durationEl = player.querySelector('.dump-player-duration');
+                const loader = player.querySelector('.dump-player-loader');
+                const fsBtn = player.querySelector('.dump-player-fullscreen');
+
+                const updatePlayIcon = () => {
+                    const icon = media.paused ? '<i class="ph-fill ph-play"></i>' : '<i class="ph-fill ph-pause"></i>';
+                    if (playBtn) playBtn.innerHTML = icon;
+                    if (bigPlay) bigPlay.innerHTML = media.paused ? '<i class="ph-fill ph-play"></i>' : '<i class="ph-fill ph-pause"></i>';
+                    if (isVideo && !media.paused) player.classList.add('playing');
+                    else if (isVideo) player.classList.remove('playing');
+                };
+
+                const updateTime = () => {
+                    if (timeEl) timeEl.textContent = formatPlayerTime(media.currentTime);
+                    if (durationEl) durationEl.textContent = formatPlayerTime(media.duration || 0);
+                    const pct = media.duration ? (media.currentTime / media.duration) * 100 : 0;
+                    if (progressFill) progressFill.style.width = pct + '%';
+                    if (progressHandle) progressHandle.style.left = pct + '%';
+                };
+
+                const togglePlay = (e) => {
+                    if (e) e.stopPropagation();
+                    if (media.paused) media.play().catch(() => {});
+                    else media.pause();
+                };
+
+                const toggleMute = (e) => {
+                    if (e) e.stopPropagation();
+                    media.muted = !media.muted;
+                    if (volumeWrapOuter) volumeWrapOuter.classList.toggle('volume-open');
+                    if (muteBtn) {
+                        muteBtn.innerHTML = media.muted
+                            ? '<i class="ph-fill ph-speaker-x"></i>'
+                            : (media.volume > 0.5 ? '<i class="ph-fill ph-speaker-high"></i>' : '<i class="ph-fill ph-speaker-low"></i>');
+                    }
+                    if (volumeFill) volumeFill.style.width = media.muted ? '0%' : (media.volume * 100) + '%';
+                };
+
+                const seek = (clientX) => {
+                    if (!media.duration || !progressWrap) return;
+                    const rect = progressWrap.getBoundingClientRect();
+                    const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+                    media.currentTime = x * media.duration;
+                    updateTime();
+                };
+
+                const setVolume = (clientX) => {
+                    if (!volumeWrap) return;
+                    const rect = volumeWrap.getBoundingClientRect();
+                    const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+                    media.volume = x;
+                    media.muted = x === 0;
+                    if (volumeFill) volumeFill.style.width = (x * 100) + '%';
+                    if (muteBtn) {
+                        muteBtn.innerHTML = media.muted || x === 0
+                            ? '<i class="ph-fill ph-speaker-x"></i>'
+                            : (x > 0.5 ? '<i class="ph-fill ph-speaker-high"></i>' : '<i class="ph-fill ph-speaker-low"></i>');
+                    }
+                };
+
+                if (playBtn) playBtn.addEventListener('click', togglePlay);
+                if (bigPlay) bigPlay.addEventListener('click', togglePlay);
+                if (muteBtn) muteBtn.addEventListener('click', toggleMute);
+
+                if (progressWrap) {
+                    progressWrap.addEventListener('click', (e) => { e.stopPropagation(); seek(e.clientX); });
+                    progressWrap.addEventListener('mousedown', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        __dumpDragState = { target: progressWrap, type: 'progress' };
+                        seek(e.clientX);
+                    });
+                    progressWrap.addEventListener('touchstart', (e) => {
+                        e.stopPropagation();
+                        __dumpDragState = { target: progressWrap, type: 'progress' };
+                        seek(e.touches[0].clientX);
+                    }, {passive: true});
+                }
+
+                if (volumeWrap) {
+                    volumeWrap.addEventListener('click', (e) => { e.stopPropagation(); setVolume(e.clientX); });
+                    volumeWrap.addEventListener('mousedown', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        __dumpDragState = { target: volumeWrap, type: 'volume' };
+                        setVolume(e.clientX);
+                    });
+                }
+
+                player.addEventListener('contextmenu', (e) => { e.stopPropagation(); e.preventDefault(); });
+
+                media.addEventListener('play', updatePlayIcon);
+                media.addEventListener('pause', updatePlayIcon);
+                media.addEventListener('timeupdate', updateTime);
+                media.addEventListener('loadedmetadata', updateTime);
+                media.addEventListener('waiting', () => { if (loader) loader.classList.add('active'); });
+                media.addEventListener('playing', () => { if (loader) loader.classList.remove('active'); });
+                media.addEventListener('canplay', () => { if (loader) loader.classList.remove('active'); });
+                media.addEventListener('ended', () => { media.currentTime = 0; updatePlayIcon(); updateTime(); });
+                media.addEventListener('volumechange', () => {
+                    if (volumeFill) volumeFill.style.width = media.muted ? '0%' : (media.volume * 100) + '%';
+                    if (muteBtn) {
+                        muteBtn.innerHTML = media.muted || media.volume === 0
+                            ? '<i class="ph-fill ph-speaker-x"></i>'
+                            : (media.volume > 0.5 ? '<i class="ph-fill ph-speaker-high"></i>' : '<i class="ph-fill ph-speaker-low"></i>');
+                    }
+                });
+
+                if (isVideo && player) {
+                    player.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (e.target.closest('.dump-player-controls, .dump-player-download, .dump-player-fullscreen, .dump-player-progress, .dump-player-volume, .dump-player-volume-wrap')) return;
+                        togglePlay(e);
+                    });
+                    if (fsBtn) {
+                        fsBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            if (document.fullscreenElement) document.exitFullscreen();
+                            else player.requestFullscreen().catch(() => media.requestFullscreen().catch(() => {}));
+                        });
+                    }
+                }
+
+                player.addEventListener('click', (e) => { e.stopPropagation(); });
+
+                const fsChange = () => {
+                    const isFs = document.fullscreenElement === player || document.fullscreenElement === media;
+                    player.classList.toggle('fullscreen', isFs);
+                };
+                document.addEventListener('fullscreenchange', fsChange);
+                document.addEventListener('webkitfullscreenchange', fsChange);
+
+                updatePlayIcon();
+                updateTime();
+            });
+        }
+        window.initDumpPlayers = initDumpPlayers;
+
         async function renderMessages(keepPosition = false) {
             const container = document.getElementById('chatMessagesInner');
             const scrollContainer = document.getElementById('chatMessages');
+            const renderedConvId = currentConvId;
             const msgs = messengerMessages[currentConvId] || [];
 
             if (!msgs.length) {
@@ -3724,13 +4155,10 @@
                 return;
             }
 
-            // При column-reverse сообщения в DOM идут от новых к старым,
-            // чтобы визуально старые были сверху, а новые — снизу.
-            const reversed = msgs.slice().reverse();
             let html = '';
             let lastSenderId = null;
 
-            reversed.forEach((msg) => {
+            msgs.forEach((msg) => {
                 const isMe = msg.sender_id == currentUser.id;
                 const displayContent = msg.content || '';
                 const isFirstOfGroup = msg.sender_id !== lastSenderId;
@@ -3790,12 +4218,133 @@
                 lastSenderId = msg.sender_id;
             });
 
+            const prevScrollHeight = scrollContainer ? scrollContainer.scrollHeight : 0;
+            const prevScrollTop = scrollContainer ? scrollContainer.scrollTop : 0;
+            const wasNearBottom = isChatNearBottom(scrollContainer);
+
+            const playerStates = [];
+            container.querySelectorAll('.dump-player, .msg-audio-widget').forEach(p => {
+                const media = p.querySelector('video, audio');
+                if (media && media.src && media.currentTime > 0) {
+                    playerStates.push({
+                        src: media.src,
+                        currentTime: media.currentTime,
+                        paused: media.paused,
+                        muted: media.muted,
+                        volume: media.volume,
+                    });
+                }
+            });
+
             container.innerHTML = html;
+            initDumpPlayers(container);
+
+            if (playerStates.length) {
+                container.querySelectorAll('.dump-player, .msg-audio-widget').forEach(p => {
+                    const media = p.querySelector('video, audio');
+                    if (!media || !media.src) return;
+                    const state = playerStates.find(s => s.src === media.src);
+                    if (state) {
+                        media.muted = state.muted;
+                        media.volume = state.volume;
+                        media.currentTime = state.currentTime;
+                        if (!state.paused) media.play().catch(() => {});
+                    }
+                });
+            }
+
+            if (keepPosition && scrollContainer) {
+                const newH = scrollContainer.scrollHeight;
+                scrollContainer.scrollTop = newH - prevScrollHeight + prevScrollTop;
+            } else if (scrollContainer) {
+                scrollContainer.scrollTop = wasNearBottom ? scrollContainer.scrollHeight : prevScrollTop;
+                requestAnimationFrame(() => {
+                    if (currentConvId == renderedConvId) onChatScroll();
+                });
+            }
+        }
+
+        function isChatNearBottom(container, threshold = 80) {
+            if (!container) return false;
+            return container.scrollHeight - container.clientHeight - container.scrollTop <= threshold;
         }
 
         function scrollChatDown() {
             const container = document.getElementById('chatMessages');
-            if (container) container.scrollTop = 0;
+            if (container) container.scrollTop = container.scrollHeight;
+        }
+
+        const MESSAGE_PAGE_SIZE = 50;
+        let isLoadingMoreMessages = false;
+        let historyLoadConversationId = null;
+        let historyLoadTimer = null;
+        const messageHistoryHasMore = Object.create(null);
+
+        function updateChatHistoryControls() {
+            const wrapper = document.getElementById('chatLoadMore');
+            const button = wrapper?.querySelector('button');
+            if (!wrapper || !button || !currentConvId) return;
+
+            const hasMore = messageHistoryHasMore[currentConvId] !== false;
+            wrapper.classList.remove('hidden');
+            wrapper.classList.toggle('history-exhausted', !hasMore);
+            button.disabled = isLoadingMoreMessages || !hasMore;
+            button.textContent = isLoadingMoreMessages ? 'Загрузка...' : 'Загрузить ещё';
+        }
+
+        async function loadMoreMessages() {
+            const convId = currentConvId;
+            const msgs = messengerMessages[currentConvId] || [];
+            if (!convId || !msgs.length || isLoadingMoreMessages || messageHistoryHasMore[convId] === false) return;
+            const before = msgs[0].id;
+            isLoadingMoreMessages = true;
+            historyLoadConversationId = convId;
+            updateChatHistoryControls();
+
+            if (wsConnected) {
+                ws.send(JSON.stringify({ type: 'get_messages', conversation_id: convId, before }));
+                clearTimeout(historyLoadTimer);
+                historyLoadTimer = setTimeout(() => {
+                    if (historyLoadConversationId == convId) {
+                        historyLoadConversationId = null;
+                        isLoadingMoreMessages = false;
+                        updateChatHistoryControls();
+                    }
+                }, 10000);
+                return;
+            }
+
+            try {
+                const res = await fetch(apiCall('messages') + `&conversation_id=${convId}&before=${before}`);
+                const data = await res.json();
+                const page = data.success && Array.isArray(data.messages) ? data.messages : [];
+                if (data.success) {
+                    const existing = messengerMessages[convId] || [];
+                    const older = page.filter(message => !existing.some(item => item.id == message.id));
+                    messengerMessages[convId] = [...older, ...existing];
+                    messageHistoryHasMore[convId] = page.length >= MESSAGE_PAGE_SIZE;
+                    if (currentConvId == convId) renderMessages(true);
+                }
+            } catch (e) {
+                console.error('loadMoreMessages error:', e);
+            } finally {
+                if (historyLoadConversationId == convId) historyLoadConversationId = null;
+                isLoadingMoreMessages = false;
+                updateChatHistoryControls();
+            }
+        }
+        window.loadMoreMessages = loadMoreMessages;
+
+        let _chatScrollFrame = null;
+        function onChatScroll() {
+            const container = document.getElementById('chatMessages');
+            if (!container || isLoadingMoreMessages) return;
+            if (_chatScrollFrame) return;
+            _chatScrollFrame = requestAnimationFrame(() => {
+                _chatScrollFrame = null;
+                const threshold = Math.max(120, container.clientHeight * 0.2);
+                if (container.scrollTop <= threshold) loadMoreMessages();
+            });
         }
 
         window.scrollToMsg = function(msgId) {
@@ -3806,24 +4355,6 @@
                 setTimeout(() => el.style.background = '', 2000);
             }
         };
-
-        async function loadMoreMessages() {
-            const msgs = messengerMessages[currentConvId] || [];
-            if (!msgs.length) return;
-            const before = msgs[0].id;
-            if (wsConnected) {
-                ws.send(JSON.stringify({ type: 'get_messages', conversation_id: currentConvId, before }));
-            } else {
-                try {
-                    const res = await fetch(apiCall('messages') + `&conversation_id=${currentConvId}&before=${before}`);
-                    const data = await res.json();
-                    if (data.success && data.messages.length) {
-                        messengerMessages[currentConvId] = [...data.messages, ...msgs];
-                        renderMessages(true);
-                    }
-                } catch (e) {}
-            }
-        }
 
         async function sendChatMessage(e) {
             e.preventDefault();

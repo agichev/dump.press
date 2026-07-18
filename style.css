@@ -700,7 +700,7 @@
         .chat-card-messages {
             flex: 1; overflow-y: auto;
             padding: 1rem 1rem 0.85rem;
-            display: flex; flex-direction: column-reverse;
+            display: flex; flex-direction: column;
             gap: 0;
             overscroll-behavior: contain;
             scroll-behavior: auto;
@@ -709,14 +709,16 @@
         #chatMessagesInner {
             flex: 0 0 auto;
             min-height: 0;
+            margin-top: auto;
             display: flex;
-            flex-direction: column-reverse;
+            flex-direction: column;
             gap: 2px;
         }
 
         .chat-load-more {
             text-align: center; padding: 0 0 0.85rem; flex-shrink: 0;
         }
+        .chat-load-more.history-exhausted { visibility: hidden; }
 
         .load-more-btn {
             background: var(--surface-elevated); color: var(--text-muted);
@@ -726,6 +728,7 @@
         }
 
         .load-more-btn:hover { background: var(--surface-hover); color: var(--text-main); }
+        .load-more-btn:disabled { cursor: default; opacity: 0.55; }
 
         .msg-row { display: flex; gap: 0; }
         .msg-row-me { justify-content: flex-end; }
@@ -957,9 +960,357 @@
             object-fit: cover;
         }
 
-        .msg-image-wrapper {
+        .msg-image-wrapper { margin-top: 4px; }
+
+        .dump-player {
+            --dp-accent: #ffffff;
+            position: relative;
+            width: min(320px, 80vw);
+            max-height: 260px;
+            border-radius: var(--radius-md);
+            background: #000;
+            overflow: hidden;
             margin-top: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
+        .dump-player video {
+            width: 100%;
+            height: 100%;
+            max-height: 260px;
+            object-fit: contain;
+            display: block;
+            background: #000;
+            border-radius: var(--radius-md);
+        }
+        .dump-player-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .dump-player.playing .dump-player-overlay { opacity: 0; }
+        .dump-player-big-play {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: rgba(0,0,0,0.55);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.6rem;
+            transition: transform 0.15s, background 0.15s;
+            pointer-events: none;
+        }
+        .dump-player-overlay:hover .dump-player-big-play {
+            background: rgba(0,0,0,0.75);
+            transform: scale(1.05);
+        }
+        .dump-player-loader {
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.35);
+            z-index: 3;
+        }
+        .dump-player-loader.active { display: flex; }
+        .dump-player-loader .spinner {
+            width: 34px;
+            height: 34px;
+            border: 3px solid rgba(255,255,255,0.25);
+            border-top-color: var(--dp-accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        .dump-player-controls {
+            position: absolute;
+            left: 8px;
+            right: 8px;
+            bottom: 8px;
+            z-index: 4;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 8px;
+            border-radius: 10px;
+            background: rgba(0,0,0,0.68);
+            backdrop-filter: blur(8px);
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+        }
+        .dump-player:hover .dump-player-controls,
+        .dump-player[data-playing="true"] .dump-player-controls,
+        .dump-player.playing .dump-player-controls,
+        .dump-player-controls.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .dump-player-progress {
+            position: relative;
+            height: 14px;
+            cursor: pointer;
+            border-radius: 6px;
+            flex-shrink: 0;
+        }
+        .dump-player-progress-track {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            height: 4px;
+            border-radius: 2px;
+            background: rgba(255,255,255,0.35);
+        }
+        .dump-player-progress-fill {
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            height: 4px;
+            border-radius: 2px;
+            background: var(--dp-accent);
+            width: 0%;
+            pointer-events: none;
+        }
+        .dump-player-progress-handle {
+            position: absolute;
+            left: 0%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--dp-accent);
+            opacity: 0;
+            transition: opacity 0.15s;
+            pointer-events: none;
+        }
+        .dump-player:hover .dump-player-progress-handle,
+        .dump-player[data-dragging="true"] .dump-player-progress-handle,
+        .dump-player-progress:hover .dump-player-progress-handle {
+            opacity: 1;
+        }
+        .dump-player-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+        .dump-player-btn {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 1rem;
+            cursor: pointer;
+            flex-shrink: 0;
+            background: rgba(255,255,255,0.12);
+            transition: background 0.15s;
+            user-select: none;
+        }
+        .dump-player-btn:hover { background: rgba(255,255,255,0.25); }
+        .dump-player-times {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            font-size: 0.7rem;
+            color: rgba(255,255,255,0.85);
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+        .dump-player-volume-wrap {
+            position: relative;
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        .dump-player-volume {
+            position: relative;
+            width: 52px;
+            height: 16px;
+            border-radius: 2px;
+            background: linear-gradient(transparent 6px, rgba(255,255,255,0.35) 6px, rgba(255,255,255,0.35) 10px, transparent 10px);
+            cursor: pointer;
+        }
+        .dump-player-volume-fill {
+            position: absolute;
+            top: 6px;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: var(--dp-accent);
+            pointer-events: none;
+        }
+        .dump-player-actions {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: auto;
+        }
+        .dump-player-fullscreen:fullscreen,
+        .dump-player-fullscreen.fullscreen {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            width: 100vw;
+            height: 100vh;
+            max-height: none;
+            border-radius: 0;
+            background: #000;
+        }
+        .dump-player.fullscreen {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            width: 100vw;
+            height: 100vh;
+            max-height: none;
+            border-radius: 0;
+            background: #000;
+        }
+        .dump-player.fullscreen video {
+            width: 100vw;
+            height: 100vh;
+            max-height: none;
+            border-radius: 0;
+            object-fit: contain;
+        }
+        .dump-player.fullscreen .dump-player-controls {
+            bottom: 16px;
+            left: 16px;
+            right: 16px;
+        }
+        .dump-player[data-error="true"] .dump-player-overlay {
+            background: rgba(0,0,0,0.6);
+        }
+        .dump-player[data-error="true"] .dump-player-big-play {
+            display: none;
+        }
+
+        .msg-audio-widget {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 4px;
+            padding: 8px 10px;
+            border-radius: var(--radius-md);
+            background: #0b0b0b;
+            border: 1px solid rgba(255,255,255,0.08);
+            max-width: 300px;
+            min-width: 220px;
+            user-select: none;
+        }
+        .msg-audio-widget audio { display: none; }
+        .msg-audio-play {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.12);
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: transform 0.1s, background 0.15s, color 0.15s;
+        }
+        .msg-audio-play:hover { background: rgba(255,255,255,0.2); }
+        .msg-audio-widget.playing .msg-audio-play { background: var(--accent); color: var(--accent-bg); }
+        .msg-audio-play:active { transform: scale(0.95); }
+        .msg-audio-col {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+        }
+        .msg-audio-title {
+            font-size: 0.78rem;
+            color: var(--text-main);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .msg-audio-progress {
+            position: relative;
+            flex: 1;
+            min-width: 48px;
+            height: 12px;
+            cursor: pointer;
+            border-radius: 6px;
+        }
+        .msg-audio-progress-track {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            height: 3px;
+            border-radius: 2px;
+            background: rgba(255,255,255,0.35);
+        }
+        .msg-audio-progress-fill {
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            height: 3px;
+            border-radius: 2px;
+            background: var(--accent);
+            width: 0%;
+            pointer-events: none;
+        }
+        .msg-audio-progress-handle {
+            position: absolute;
+            left: 0%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: var(--accent);
+            opacity: 0.85;
+            transition: opacity 0.15s;
+            pointer-events: none;
+        }
+        .msg-audio-progress:hover .msg-audio-progress-handle,
+        .msg-audio-widget[data-dragging="true"] .msg-audio-progress-handle {
+            opacity: 1;
+        }
+        .msg-audio-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        .msg-audio-time {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            font-variant-numeric: tabular-nums;
+            flex-shrink: 0;
+        }
+        .msg-audio-download {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: color 0.15s;
+        }
+        .msg-audio-download:hover { color: var(--text-main); }
 
         .chat-upload-progress {
             padding: 8px 1rem; border-top: 1px solid var(--surface-hover);
@@ -1023,6 +1374,15 @@
             .reply-indicator { margin-left: 0; margin-right: 0; padding-left: 0.75rem; padding-right: 0.75rem; }
             .emoji-picker { max-height: 170px; }
             .context-menu { min-width: 200px; }
+            .dump-player { width: 72vw; }
+            .msg-audio-widget { max-width: 72vw; min-width: 180px; }
+        }
+
+        @media (max-width: 480px) {
+            .dump-player-controls { padding: 6px; }
+            .dump-player-row { gap: 4px; }
+            .dump-player-times { font-size: 0.65rem; }
+            .dump-player-volume { display: none; }
         }
 
         @media (min-width: 769px) {
@@ -1073,5 +1433,3 @@
                 display: none !important;
             }
         }
-
-
