@@ -21,13 +21,19 @@ function getLegalDoc(string $slug): ?array {
     if (!isset($docs[$slug])) return null;
     $doc = $docs[$slug];
     if (!is_file($doc['file'])) return null;
+    $cacheKey = 'legal:' . $slug . ':' . (string)@filemtime($doc['file']);
+    $cached = dumpCacheGetJson($cacheKey);
+    if ($cached !== null) return $cached;
+
     $md = (string)file_get_contents($doc['file']);
-    return [
+    $result = [
         'slug'  => $doc['slug'],
         'title' => $doc['title'],
         'md'    => $md,
         'html'  => renderLegalMarkdown($md),
     ];
+    dumpCacheSetJson($cacheKey, $result, 3600);
+    return $result;
 }
 
 /** @param string $md */

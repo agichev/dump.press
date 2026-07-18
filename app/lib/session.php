@@ -31,9 +31,21 @@ function getActiveSession() {
     global $pdo;
     $token = $_COOKIE['vibe_session'] ?? '';
     if (!$token) return null;
+
+    $cacheKey = dumpSessionCacheKey($token);
+    $cached = dumpCacheGetJson($cacheKey);
+    if ($cached !== null && !empty($cached['expires_at']) && strtotime($cached['expires_at']) > time()) {
+        return $cached;
+    }
+
     $stmt = $pdo->prepare("SELECT * FROM sessions WHERE token = ? AND expires_at > ?");
     $stmt->execute([$token, date('Y-m-d H:i:s')]);
-    return $stmt->fetch() ?: null;
+    $session = $stmt->fetch() ?: null;
+    if ($session) {
+        $ttl = max(1, min(60, strtotime($session['expires_at']) - time()));
+        dumpCacheSetJson($cacheKey, $session, $ttl);
+    }
+    return $session;
 }
 
 function destroySession() {
@@ -41,6 +53,7 @@ function destroySession() {
     $token = $_COOKIE['vibe_session'] ?? '';
     if ($token) {
         $pdo->prepare("DELETE FROM sessions WHERE token = ?")->execute([$token]);
+        dumpCacheDelete(dumpSessionCacheKey($token));
         setcookie('vibe_session', '', [
             'expires' => time() - 3600,
             'path' => '/',

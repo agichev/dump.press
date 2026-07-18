@@ -77,6 +77,11 @@ function sendFcmPush($pdo, $userId, $fromUserId, $type, $postId, $postSlug): voi
 
 function getFcmAccessToken(array $sa): string {
     $cacheKey = 'fcm_token_' . md5($sa['client_email']);
+    $redisCached = dumpCacheGetJson($cacheKey);
+    if ($redisCached && ($redisCached['expires_at'] ?? 0) > time() + 60) {
+        return (string)$redisCached['token'];
+    }
+
     $cacheDir = sys_get_temp_dir() . '/dump_fcm';
     if (!is_dir($cacheDir)) @mkdir($cacheDir, 0700, true);
     $cacheFile = "$cacheDir/$cacheKey";
@@ -126,6 +131,7 @@ function getFcmAccessToken(array $sa): string {
     $token = $data['access_token'];
     $expiresAt = $now + ($data['expires_in'] ?? 3600) - 300;
 
+    dumpCacheSetJson($cacheKey, ['token' => $token, 'expires_at' => $expiresAt], max(60, $expiresAt - time()));
     @file_put_contents($cacheFile, json_encode(['token' => $token, 'expires_at' => $expiresAt]));
 
     return $token;

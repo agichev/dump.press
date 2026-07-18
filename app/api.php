@@ -4,6 +4,9 @@ declare(strict_types=1);
 $action = $_GET['api'] ?? '';
 
 function checkRateLimit(string $key, int $max, int $windowSec): bool {
+    $redisResult = dumpRedisRateLimit($key, $max, $windowSec);
+    if ($redisResult !== null) return $redisResult;
+
     $dir = sys_get_temp_dir() . '/dump_rl';
     if (!is_dir($dir)) @mkdir($dir, 0700, true);
     $file = "$dir/" . md5($key) . '.rl';
@@ -329,6 +332,9 @@ try {
                 $wsToken = bin2hex(random_bytes(32));
                 $pdo->prepare("UPDATE sessions SET ws_token = ? WHERE token = ?")
                     ->execute([$wsToken, $current_session['token']]);
+                $current_session['ws_token'] = $wsToken;
+                $sessionTtl = max(1, min(60, strtotime($current_session['expires_at']) - time()));
+                dumpCacheSetJson(dumpSessionCacheKey($current_session['token']), $current_session, $sessionTtl);
             }
             echo json_encode(['success' => true, 'ws_token' => $wsToken]);
             break;
@@ -462,30 +468,35 @@ try {
             $q = trim($_GET['q'] ?? '');
             if (!$q) { echo json_encode(['users' => [], 'posts' => []]); break; }
 
-            $stmt_posts = $pdo->prepare("
-                SELECT p.id, p.slug, p.content, p.image_url, u.username, u.avatar_url
-                FROM posts p JOIN users u ON p.user_id = u.id
-                WHERE p.content LIKE ? ORDER BY p.created_at DESC LIMIT 15
-            ");
-            $stmt_posts->execute(["%$q%"]);
-            $posts = $stmt_posts->fetchAll();
+            $cacheKey = 'search:' . hash('sha256', mb_strtolower($q, 'UTF-8'));
+            $result = dumpCacheRememberJson($cacheKey, 10, function () use ($pdo, $q): array {
+                $stmt_posts = $pdo->prepare("
+                    SELECT p.id, p.slug, p.content, p.image_url, u.username, u.avatar_url
+                    FROM posts p JOIN users u ON p.user_id = u.id
+                    WHERE p.content LIKE ? ORDER BY p.created_at DESC LIMIT 15
+                ");
+                $stmt_posts->execute(["%$q%"]);
+                $posts = $stmt_posts->fetchAll();
 
-            $stmt_users = $pdo->prepare("SELECT id, username, avatar_url FROM users WHERE username LIKE ? AND privacy_searchable = 1 LIMIT 10");
-            $stmt_users->execute(["%$q%"]);
-            $users = $stmt_users->fetchAll();
+                $stmt_users = $pdo->prepare("SELECT id, username, avatar_url FROM users WHERE username LIKE ? AND privacy_searchable = 1 LIMIT 10");
+                $stmt_users->execute(["%$q%"]);
+                $users = $stmt_users->fetchAll();
 
-            foreach ($posts as &$post) {
-                $post['content'] = htmlspecialchars($post['content'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
-                $post['username'] = htmlspecialchars($post['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
-                $post['avatar_url'] = htmlspecialchars($post['avatar_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
-                $post['image_url'] = htmlspecialchars($post['image_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
-            }
-            foreach ($users as &$u) {
-                $u['username'] = htmlspecialchars($u['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
-                $u['avatar_url'] = htmlspecialchars($u['avatar_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
-            }
+                foreach ($posts as &$post) {
+                    $post['content'] = htmlspecialchars($post['content'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                    $post['username'] = htmlspecialchars($post['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                    $post['avatar_url'] = htmlspecialchars($post['avatar_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                    $post['image_url'] = htmlspecialchars($post['image_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                }
+                foreach ($users as &$u) {
+                    $u['username'] = htmlspecialchars($u['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                    $u['avatar_url'] = htmlspecialchars($u['avatar_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                }
 
-            echo json_encode(['users' => $users, 'posts' => $posts]);
+                return ['users' => $users, 'posts' => $posts];
+            });
+
+            echo json_encode($result);
             break;
         }
 
@@ -493,6 +504,12 @@ try {
         case 'user_profile': {
             $user_id = (int)($_GET['id'] ?? 0);
             $current_user_id = $current_session ? (int)$current_session['user_id'] : 0;
+            $profileCacheKey = 'profile:' . $user_id . ':' . $current_user_id;
+            $cachedProfile = dumpCacheGetJson($profileCacheKey);
+            if ($cachedProfile !== null) {
+                echo json_encode($cachedProfile);
+                break;
+            }
 
             $stmt = $pdo->prepare("
                 SELECT id, username, avatar_url, bio, created_at, bookmarks_public,
@@ -553,7 +570,9 @@ try {
                 $bmark['image_url'] = htmlspecialchars($bmark['image_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
             }
 
-            echo json_encode(['profile' => $profile, 'posts' => $posts, 'bookmarks' => $bookmarks]);
+            $profileResponse = ['profile' => $profile, 'posts' => $posts, 'bookmarks' => $bookmarks];
+            dumpCacheSetJson($profileCacheKey, $profileResponse, 3);
+            echo json_encode($profileResponse);
             break;
         }
 
@@ -567,9 +586,11 @@ try {
             $stmt->execute([$follower_id, $following_id]);
             if ($stmt->fetch()) {
                 $pdo->prepare("DELETE FROM follows WHERE follower_id = ? AND following_id = ?")->execute([$follower_id, $following_id]);
+                dumpCacheDelete('following:' . $follower_id);
                 echo json_encode(['followed' => false]);
             } else {
                 $pdo->prepare("INSERT INTO follows (follower_id, following_id) VALUES (?, ?)")->execute([$follower_id, $following_id]);
+                dumpCacheDelete('following:' . $follower_id);
                 createNotification($pdo, $following_id, $follower_id, 'follow');
                 echo json_encode(['followed' => true]);
             }
@@ -577,20 +598,26 @@ try {
 
         case 'get_following':
             requireAuth();
-            $stmt = $pdo->prepare("
-                SELECT u.id, u.username, u.avatar_url
-                FROM follows f
-                JOIN users u ON f.following_id = u.id
-                WHERE f.follower_id = ?
-                ORDER BY u.username ASC
-            ");
-            $stmt->execute([$current_session['user_id']]);
-            $following = $stmt->fetchAll();
-            foreach ($following as &$u) {
-                $u['username'] = htmlspecialchars($u['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
-                $u['avatar_url'] = htmlspecialchars($u['avatar_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $followingCacheKey = 'following:' . (int)$current_session['user_id'];
+            $followingResponse = dumpCacheGetJson($followingCacheKey);
+            if ($followingResponse === null) {
+                $stmt = $pdo->prepare("
+                    SELECT u.id, u.username, u.avatar_url
+                    FROM follows f
+                    JOIN users u ON f.following_id = u.id
+                    WHERE f.follower_id = ?
+                    ORDER BY u.username ASC
+                ");
+                $stmt->execute([$current_session['user_id']]);
+                $following = $stmt->fetchAll();
+                foreach ($following as &$u) {
+                    $u['username'] = htmlspecialchars($u['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                    $u['avatar_url'] = htmlspecialchars($u['avatar_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                }
+                $followingResponse = ['success' => true, 'following' => $following];
+                dumpCacheSetJson($followingCacheKey, $followingResponse, 15);
             }
-            echo json_encode(['success' => true, 'following' => $following]);
+            echo json_encode($followingResponse);
             break;
 
         case 'mark_seen':
@@ -620,6 +647,18 @@ try {
                 foreach (explode(',', $exclude_param) as $_pid) {
                     $_pid = (int)trim($_pid);
                     if ($_pid > 0) $exclude_ids[$_pid] = $_pid;
+                }
+            }
+
+            // The guest feed is identical for all visitors; personalize only after login.
+            $guestFeedCacheKey = null;
+            if (!$user_id && $type === 'all' && !$requested_slug) {
+                $excludeHash = hash('sha256', implode(',', array_keys($exclude_ids)));
+                $guestFeedCacheKey = 'feed:guest:' . $excludeHash;
+                $cachedFeed = dumpCacheGetJson($guestFeedCacheKey);
+                if ($cachedFeed !== null) {
+                    echo json_encode(['posts' => $cachedFeed]);
+                    break;
                 }
             }
 
@@ -738,6 +777,7 @@ try {
                     $post['image_url'] = htmlspecialchars(implode(',', array_unique(array_filter($imgArr))), ENT_QUOTES | ENT_HTML5, 'UTF-8');
                 }
             }
+            if ($guestFeedCacheKey !== null) dumpCacheSetJson($guestFeedCacheKey, $posts, 5);
             echo json_encode(['posts' => $posts]);
             break;
         }
@@ -840,8 +880,12 @@ try {
         case 'delete_post':
             requireAuth();
             $post_id = (int)($_POST['post_id'] ?? 0);
+            $stmt = $pdo->prepare("SELECT slug FROM posts WHERE id = ? AND user_id = ?");
+            $stmt->execute([$post_id, $current_session['user_id']]);
+            $deletedSlug = $stmt->fetchColumn() ?: '';
             $stmt = $pdo->prepare("DELETE FROM posts WHERE id = ? AND user_id = ?");
             $stmt->execute([$post_id, $current_session['user_id']]);
+            if ($deletedSlug) dumpCacheDelete('seo:post:' . hash('sha256', (string)$deletedSlug));
             echo json_encode(['success' => true]);
             break;
 
@@ -885,6 +929,13 @@ try {
         case 'comments': {
             $post_id = (int)($_GET['post_id'] ?? 0);
             $user_id = $current_session ? (int)$current_session['user_id'] : 0;
+            $commentsCacheKey = 'comments:' . $post_id . ':' . $user_id;
+            $cachedComments = dumpCacheGetJson($commentsCacheKey);
+            if ($cachedComments !== null) {
+                echo json_encode($cachedComments);
+                break;
+            }
+
             $stmt = $pdo->prepare("
                 SELECT c.*, u.username, u.avatar_url,
                     (SELECT COUNT(*) FROM comment_likes WHERE comment_id = c.id) as likes_count,
@@ -901,7 +952,9 @@ try {
                 $comment['avatar_url'] = htmlspecialchars($comment['avatar_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
                 $comment['image_url'] = htmlspecialchars($comment['image_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
             }
-            echo json_encode(['comments' => $comments]);
+            $commentsResponse = ['comments' => $comments];
+            dumpCacheSetJson($commentsCacheKey, $commentsResponse, 3);
+            echo json_encode($commentsResponse);
             break;
         }
 
@@ -992,6 +1045,7 @@ try {
                 $stmt = $pdo->prepare("UPDATE users SET bio = ?, bookmarks_public = ? WHERE id = ?");
                 $stmt->execute([$bio, $bookmarks_public, $current_session['user_id']]);
             }
+            dumpCacheDelete('seo:profile:' . (int)$current_session['user_id']);
             echo json_encode(['success' => true]);
             break;
 
@@ -1009,7 +1063,7 @@ try {
             $stmt->execute([$email, $username, $current_session['user_id']]);
             if ($stmt->fetch()) throw new Exception('Email или Имя пользователя уже заняты');
 
-            $stmt = $pdo->prepare("SELECT email, password_hash, tfa_enabled, tfa_method, tfa_secret FROM users WHERE id = ?");
+            $stmt = $pdo->prepare("SELECT username, email, password_hash, tfa_enabled, tfa_method, tfa_secret FROM users WHERE id = ?");
             $stmt->execute([$current_session['user_id']]);
             $current = $stmt->fetch();
             if (!$current || !password_verify($password, $current['password_hash'])) {
@@ -1038,6 +1092,11 @@ try {
 
             $stmt = $pdo->prepare("UPDATE users SET email = ?, username = ? WHERE id = ?");
             $stmt->execute([$email, $username, $current_session['user_id']]);
+            dumpCacheDelete(
+                'seo:profile:' . (int)$current_session['user_id'],
+                'username:' . hash('sha256', mb_strtolower((string)($current['username'] ?? ''), 'UTF-8')),
+                'username:' . hash('sha256', mb_strtolower($username, 'UTF-8'))
+            );
             echo json_encode(['success' => true]);
             break;
 
@@ -1079,8 +1138,12 @@ try {
         case 'revoke_session':
             requireAuth();
             $sid = $_POST['id'] ?? '';
+            $stmt = $pdo->prepare("SELECT token FROM sessions WHERE user_id = ? AND SHA2(token, 256) = ? AND token != ?");
+            $stmt->execute([$current_session['user_id'], $sid, $current_session['token']]);
+            $revokedToken = $stmt->fetchColumn() ?: '';
             $stmt = $pdo->prepare("DELETE FROM sessions WHERE user_id = ? AND SHA2(token, 256) = ? AND token != ?");
             $stmt->execute([$current_session['user_id'], $sid, $current_session['token']]);
+            if ($revokedToken) dumpCacheDelete(dumpSessionCacheKey((string)$revokedToken));
             echo json_encode(['success' => true]);
             break;
 
@@ -1088,9 +1151,14 @@ try {
         case 'resolve_username': {
             $username = trim($_GET['username'] ?? '');
             if (!$username) throw new Exception('Username is required');
-            $stmt = $pdo->prepare("SELECT id, username, avatar_url FROM users WHERE username = ? LIMIT 1");
-            $stmt->execute([$username]);
-            $user = $stmt->fetch();
+            $cacheKey = 'username:' . hash('sha256', mb_strtolower($username, 'UTF-8'));
+            $user = dumpCacheGetJson($cacheKey);
+            if ($user === null) {
+                $stmt = $pdo->prepare("SELECT id, username, avatar_url FROM users WHERE username = ? LIMIT 1");
+                $stmt->execute([$username]);
+                $user = $stmt->fetch() ?: [];
+                if ($user) dumpCacheSetJson($cacheKey, $user, 60);
+            }
             if (!$user) throw new Exception('Пользователь не найден');
             $user['username'] = htmlspecialchars($user['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
             $user['avatar_url'] = htmlspecialchars($user['avatar_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -1225,28 +1293,33 @@ try {
             requireAuth();
             $q = trim($_GET['q'] ?? '');
             $limit = min((int)($_GET['limit'] ?? 20), 50);
-            $endpoint = $q
-                ? 'https://opengifs.webounty.ru/api/v1/gifs/search?' . http_build_query(['q' => $q, 'limit' => $limit])
-                : 'https://opengifs.webounty.ru/api/v1/gifs/trending?' . http_build_query(['limit' => $limit]);
-            $ch = curl_init();
-            curl_setopt_array($ch, [
-                CURLOPT_URL => $endpoint,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT => 8,
-                CURLOPT_USERAGENT => 'Dump/6.6',
-            ]);
-            $resp = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-            if ($httpCode !== 200 || !$resp) throw new Exception('GIF fetch failed');
-            $data = json_decode($resp, true);
-            $gifs = [];
-            foreach ($data['data'] ?? [] as $r) {
-                $gifs[] = [
-                    'id' => $r['id'] ?? '',
-                    'title' => $r['title'] ?? '',
-                    'gif_url' => $r['gif_url'] ?? '',
-                ];
+            $cacheKey = 'gifs:' . hash('sha256', mb_strtolower($q, 'UTF-8') . ':' . $limit);
+            $gifs = dumpCacheGetJson($cacheKey);
+            if ($gifs === null) {
+                $endpoint = $q
+                    ? 'https://opengifs.webounty.ru/api/v1/gifs/search?' . http_build_query(['q' => $q, 'limit' => $limit])
+                    : 'https://opengifs.webounty.ru/api/v1/gifs/trending?' . http_build_query(['limit' => $limit]);
+                $ch = curl_init();
+                curl_setopt_array($ch, [
+                    CURLOPT_URL => $endpoint,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT => 8,
+                    CURLOPT_USERAGENT => 'Dump/6.6',
+                ]);
+                $resp = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+                if ($httpCode !== 200 || !$resp) throw new Exception('GIF fetch failed');
+                $data = json_decode($resp, true);
+                $gifs = [];
+                foreach ($data['data'] ?? [] as $r) {
+                    $gifs[] = [
+                        'id' => $r['id'] ?? '',
+                        'title' => $r['title'] ?? '',
+                        'gif_url' => $r['gif_url'] ?? '',
+                    ];
+                }
+                dumpCacheSetJson($cacheKey, $gifs, 60);
             }
             echo json_encode(['success' => true, 'gifs' => $gifs]);
             break;

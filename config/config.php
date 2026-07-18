@@ -57,6 +57,17 @@ $GLOBALS['db_user']     = env('DB_USERNAME', env('DB_USER', 'root'));
 $GLOBALS['db_password'] = env('DB_PASSWORD', '');
 
 /* ---------------------------------------------------------------------
+ | Redis (optional acceleration layer; the database remains authoritative)
+ | -------------------------------------------------------------------- */
+$GLOBALS['REDIS_ENABLED']  = env_bool('REDIS_ENABLED', true);
+$GLOBALS['REDIS_HOST']     = env('REDIS_HOST', '127.0.0.1');
+$GLOBALS['REDIS_PORT']     = env('REDIS_PORT', '6379');
+$GLOBALS['REDIS_PASSWORD'] = env('REDIS_PASSWORD', '');
+$GLOBALS['REDIS_DATABASE'] = env('REDIS_DATABASE', '0');
+$GLOBALS['REDIS_TIMEOUT']  = env('REDIS_TIMEOUT', '0.2');
+$GLOBALS['REDIS_PREFIX']   = env('REDIS_PREFIX', 'dump:');
+
+/* ---------------------------------------------------------------------
  |  Серверный ключ шифрования сообщений
  |  -------------------------------------------------------------------- */
  // Ключ живёт ВНЕ проекта: /etc/dump.press/server.key (chmod 0600).

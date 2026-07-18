@@ -50,9 +50,15 @@ try {
 
     if (isset($path_parts[0]) && $path_parts[0] === 'post' && !empty($path_parts[1])) {
         $slug = $path_parts[1];
-        $stmt = $pdo->prepare("SELECT p.content, p.image_url, p.created_at, u.username FROM posts p JOIN users u ON p.user_id = u.id WHERE p.slug = ?");
-        $stmt->execute([$slug]);
-        if ($post = $stmt->fetch()) {
+        $postCacheKey = 'seo:post:' . hash('sha256', $slug);
+        $post = dumpCacheGetJson($postCacheKey);
+        if ($post === null) {
+            $stmt = $pdo->prepare("SELECT p.content, p.image_url, p.created_at, u.username FROM posts p JOIN users u ON p.user_id = u.id WHERE p.slug = ?");
+            $stmt->execute([$slug]);
+            $post = $stmt->fetch() ?: [];
+            if ($post) dumpCacheSetJson($postCacheKey, $post, 60);
+        }
+        if ($post) {
             $seo_title = "Публикация от @" . $post['username'] . " | Dump";
             $text_clean = trim(preg_replace('/\s+/', ' ', strip_tags($post['content'])));
             if ($text_clean) {
@@ -71,9 +77,15 @@ try {
         }
     } elseif (isset($path_parts[0]) && $path_parts[0] === 'profile' && !empty($path_parts[1])) {
         $uid = (int)$path_parts[1];
-        $stmt = $pdo->prepare("SELECT username, bio, avatar_url FROM users WHERE id = ?");
-        $stmt->execute([$uid]);
-        if ($user = $stmt->fetch()) {
+        $userCacheKey = 'seo:profile:' . $uid;
+        $user = dumpCacheGetJson($userCacheKey);
+        if ($user === null) {
+            $stmt = $pdo->prepare("SELECT username, bio, avatar_url FROM users WHERE id = ?");
+            $stmt->execute([$uid]);
+            $user = $stmt->fetch() ?: [];
+            if ($user) dumpCacheSetJson($userCacheKey, $user, 60);
+        }
+        if ($user) {
             $seo_title = "@" . $user['username'] . " | Профиль Dump";
             $bio_clean = trim(preg_replace('/\s+/', ' ', strip_tags((string)$user['bio'])));
             $seo_desc = $bio_clean ? (mb_substr($bio_clean, 0, 150) . '...') : "Смотрите публикации пользователя @" . $user['username'] . " на Dump.";

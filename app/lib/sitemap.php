@@ -30,6 +30,15 @@ function outputRobotsTxt(): void {
 function outputSitemapXml(): void {
     global $pdo;
     $base = app_base_url();
+    $cacheKey = 'sitemap:' . hash('sha256', $base);
+    $cached = dumpCacheGet($cacheKey);
+    if ($cached !== null) {
+        header('Content-Type: application/xml; charset=utf-8');
+        header('Cache-Control: public, max-age=1800');
+        echo $cached;
+        exit;
+    }
+
     $urls = [];
 
     // Главная
@@ -70,8 +79,7 @@ function outputSitemapXml(): void {
         }
     } catch (Throwable $e) {}
 
-    header('Content-Type: application/xml; charset=utf-8');
-    header('Cache-Control: public, max-age=1800');
+    ob_start();
     echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
     echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="https://www.google.com/schemas/sitemap-image/1.1">' . "\n";
     foreach ($urls as $u) {
@@ -88,5 +96,10 @@ function outputSitemapXml(): void {
         echo "  </url>\n";
     }
     echo "</urlset>\n";
+    $xml = (string)ob_get_clean();
+    dumpCacheSet($cacheKey, $xml, 1800);
+    header('Content-Type: application/xml; charset=utf-8');
+    header('Cache-Control: public, max-age=1800');
+    echo $xml;
     exit;
 }
