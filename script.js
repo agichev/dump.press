@@ -280,6 +280,20 @@
             return `${pad(date.getDate())}.${pad(date.getMonth()+1)}.${date.getFullYear()}`;
         };
 
+        const messageDateKey = (date) => {
+            if (!date || isNaN(date)) return '';
+            return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+        };
+
+        const messageDateLabel = (date) => {
+            if (!date || isNaN(date)) return '';
+            return date.toLocaleDateString('ru-RU', {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+            });
+        };
+
         const maskIp = (ip) => {
             if(!ip || ip === 'Unknown') return 'Скрыт';
             const parts = ip.split('.');
@@ -3132,14 +3146,11 @@
 
                 case 'conversations': {
                     const serverConvs = data.conversations || [];
-                    const localUnread = {};
-                    messengerConversations.forEach(c => { localUnread[c.id] = c.unread_count; });
 
                     messengerConversations = sortConversationsByLastMsg(serverConvs.map(sc => {
-                        const local = messengerConversations.find(lc => lc.id === sc.id);
                         return {
                             ...sc,
-                            unread_count: local ? (local.unread_count || 0) : (parseInt(sc.unread_count) || 0),
+                            unread_count: parseInt(sc.unread_count) || 0,
                         };
                     }));
 
@@ -3502,7 +3513,7 @@
         function startConvPolling() {
             stopConvPolling();
             convPollInterval = setInterval(() => {
-                if (currentUser && !wsConnected && messengerInitialized) {
+                if (currentUser && messengerInitialized) {
                     loadConversationsHttp();
                 }
             }, 5000);
@@ -4257,11 +4268,24 @@
 
             let html = '';
             let lastSenderId = null;
+            let lastDateKey = '';
+            let lastTimestamp = null;
 
             msgs.forEach((msg) => {
                 const isMe = msg.sender_id == currentUser.id;
                 const displayContent = msg.content || '';
-                const isFirstOfGroup = msg.sender_id !== lastSenderId;
+                const msgDate = parseDateStr(msg.created_at);
+                const currentDateKey = messageDateKey(msgDate);
+                const isNewDate = Boolean(currentDateKey && currentDateKey !== lastDateKey);
+                const currentTimestamp = msgDate && !isNaN(msgDate) ? msgDate.getTime() : null;
+                const hasLongGap = lastTimestamp !== null && currentTimestamp !== null
+                    && currentTimestamp - lastTimestamp >= 5 * 60 * 60 * 1000;
+                const isFirstOfGroup = msg.sender_id !== lastSenderId || isNewDate || hasLongGap;
+                const rowSpacingClass = hasLongGap && !isNewDate ? ' msg-long-gap' : '';
+
+                if (isNewDate) {
+                    html += `<div class="msg-date-divider" role="separator"><span>${messageDateLabel(msgDate)}</span></div>`;
+                }
 
                 let statusIcon = '';
                 if (isMe) {
@@ -4280,10 +4304,12 @@
                 const avatar = msg.avatar_url ? getProxyUrl(msg.avatar_url || `https://ui-avatars.com/api/?name=${msg.username}&background=random`) : '';
 
                 if (isDeleted) {
-                    html += `<div class="msg-row ${isMe ? 'msg-row-me' : ''}">
+                    html += `<div class="msg-row ${isMe ? 'msg-row-me' : ''}${rowSpacingClass}">
                         <div class="msg-deleted">Сообщение удалено</div>
                     </div>`;
                     lastSenderId = msg.sender_id;
+                    if (currentDateKey) lastDateKey = currentDateKey;
+                    if (currentTimestamp !== null) lastTimestamp = currentTimestamp;
                     return;
                 }
 
@@ -4299,7 +4325,7 @@
                     }
                 }
 
-                html += `<div class="msg-row ${isMe ? 'msg-row-me' : ''}" id="msg-${msg.id}">
+                html += `<div class="msg-row ${isMe ? 'msg-row-me' : ''}${rowSpacingClass}" id="msg-${msg.id}">
                     ${!isMe && isFirstOfGroup ? `<img src="${avatar}" class="msg-avatar" loading="lazy">` : ''}
                     ${!isMe && !isFirstOfGroup ? '<div class="msg-avatar-spacer"></div>' : ''}
                     <div class="msg-content ${isMe ? 'msg-content-me' : ''} ${isFirstOfGroup ? '' : 'msg-continue'}">
@@ -4316,6 +4342,8 @@
                 </div>`;
 
                 lastSenderId = msg.sender_id;
+                if (currentDateKey) lastDateKey = currentDateKey;
+                if (currentTimestamp !== null) lastTimestamp = currentTimestamp;
             });
 
             const prevScrollHeight = scrollContainer ? scrollContainer.scrollHeight : 0;
@@ -4919,7 +4947,7 @@
                     const emojis = ['😀','😁','😂','🤣','😃','😄','😅','😆','😉','😊','😋','😎','😍','🥰','😘','😜','🤪','😝','🤑','🤗','🤩','🤔','🤨','😐','😑','😶','🙄','😏','😣','😥','😮','🤐','😯','😪','😫','😴','😌','😛','😜','😝','🤤','😒','😓','😔','😕','🙃','🤑','😲','☹️','🙁','😖','😞','😟','😤','😢','😭','😦','😧','😨','😩','🤯','😬','😰','😱','🥵','🥶','😳','🤪','😵','😡','😠','🤬','👋','🤚','🖐','✋','🖖','👌','🤌','🤏','✌️','🤞','🫰','🫵','🤟','🤘','🤙','👈','👉','👆','🖕','👇','👍','👎','👊','✊','🤛','🤜','👏','🙌','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦵','🦶','👂','🦻','👃','🧠','🫀','🫁','🦷','🦴','👀','👁','👅','👄','❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','♥️','🫶','💌','💋','💯','💢','💥','💫','💦','💨','🕳️','💬','👤','👥','🗣️','🧑','👱','👨','👩','🧔','👴','👵','🙋','💁','🙅','🙆','🙇','🤦','🤷','👑','👒','🎩','🎓','🧢','👑','💄','💍','🌍','🌎','🌏','🌐','☀️','🌑','⭐','🌟','🔥','💧','🌊','🍕','🍔','🍟','🌭','🥪','🥙','🧆','🥗','🍿','🧁','🍰','🎂','🍦','🍩','🍪','🍫','🍬','🍭','🍮','☕','🍵','🍺','🍻','🥂','🥃','🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🐦','🐤','🐣','🐥','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🪱','🐛','🦋','🐌','🐞','🐜','🪰','🪲','🪳','🦟','🦗','🕷️','🦂','🐢','🐍','🦎','🦖','🦕','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈','🌹','🥀','🌺','🌸','🌼','🌻','🌞','🌝','🌛','🌜','🌚','🌕','🌖','🌗','🌘','🌑','🌒','🌓','🌔','🌙','🌎','🌍','🌏','🌈','☁️','⛅','⚡','❄️','🔥','💥','⭐','🌟','✨','💫','🎉','🎊','🎈','🎁','🎀','🎃','🎄','🎆','🎇','🧨','✨','🪄','💎','🔮','🎮','🎯','🎲','♟️','🏆','🥇','🥈','🥉','⚽','⚾','🏀','🏐','🏈','🎾','🏉','🎱','🎳','⛳','🏓','🏸','🏒','🏑','🥍','🏏','🪃','🥅','⛸️','🎣','🤿','🎽','🎿','🛷','🥌','🎯','🎰','🎲','♠️','♥️','♦️','♣️','🃏','🀄️','🎴'];
                     grid.innerHTML = emojis.map(e => `<button type="button" class="emoji-item" onclick="insertEmoji('${e}')">${e}</button>`).join('');
                 }
-                if (!gifGrid.innerHTML.trim() || gifGrid.querySelector('.gif-item')) {
+                if (!gifGrid.innerHTML.trim()) {
                     gifGrid.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text-muted);">Введите запрос для поиска GIF</div>';
                 }
                 switchPickerTab('emoji');
@@ -4936,7 +4964,14 @@
             document.getElementById('tabGif').classList.toggle('active', tab === 'gif');
             document.getElementById('emojiPanel').classList.toggle('hidden', tab !== 'emoji');
             document.getElementById('gifPanel').classList.toggle('hidden', tab !== 'gif');
-            if (tab === 'gif') setTimeout(() => document.getElementById('gifSearchInput').focus(), 100);
+            if (tab === 'gif') {
+                const input = document.getElementById('gifSearchInput');
+                const grid = document.getElementById('gifGrid');
+                setTimeout(() => input?.focus(), 100);
+                if (grid && grid.dataset.gifQuery !== (input?.value.trim() || '')) {
+                    performGifSearch();
+                }
+            }
         }
         window.switchPickerTab = switchPickerTab;
 
@@ -4948,13 +4983,15 @@
         window.debounceGifSearch = debounceGifSearch;
 
         async function performGifSearch() {
-            const q = document.getElementById('gifSearchInput').value.trim();
+            const input = document.getElementById('gifSearchInput');
+            const q = input.value.trim();
             const grid = document.getElementById('gifGrid');
             grid.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text-muted);"><i class="ph ph-spinner spin"></i></div>';
             try {
                 const res = await fetch(apiCall('gif_search') + '&q=' + encodeURIComponent(q));
                 const data = await res.json();
                 if (data.success && data.gifs.length) {
+                    grid.dataset.gifQuery = q;
                     grid.innerHTML = data.gifs.map(g => {
                         const imageUrl = g.gif_url || g.image_url || '';
                         const url = imageUrl.replace(/'/g, "\\'");
@@ -4969,12 +5006,35 @@
             }
         }
 
-        function insertGif(url) {
+        async function insertGif(url) {
             const input = document.getElementById('chatInput');
-            input.value += ' ' + url + ' ';
-            input.focus();
-            resizeTextarea(input);
+            if (!input || !url) return;
+
+            // Send the GIF as a normal message instead of inserting a raw URL.
+            if (!currentConvId || String(currentConvId).startsWith('pending_')) {
+                input.value += (input.value ? ' ' : '') + url + ' ';
+                input.focus();
+                resizeTextarea(input);
+                closeEmojiPicker();
+                return;
+            }
+
+            const draft = input.value;
+            const attachments = pendingAttachments.slice();
+            input.value = url;
+            pendingAttachments = [];
+            renderAttachmentPreviews();
             closeEmojiPicker();
+            await sendChatMessage({ preventDefault() {} });
+
+            // Do not destroy text the user had already typed while choosing a GIF.
+            if (!captchaRequired) {
+                input.value = draft;
+                pendingAttachments = attachments;
+                renderAttachmentPreviews();
+                input.focus();
+                resizeTextarea(input);
+            }
         }
         window.insertGif = insertGif;
 

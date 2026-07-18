@@ -1656,6 +1656,9 @@ try {
             $stmt->execute([$conv_id, $uid, $encrypted_content, $reply_to]);
             $msg_id = (int)$pdo->lastInsertId();
 
+            // A new incoming message brings a previously hidden conversation back.
+            $pdo->prepare("UPDATE conversation_participants SET is_deleted = 0 WHERE conversation_id = ? AND user_id != ?")
+                ->execute([$conv_id, $current_session['user_id']]);
             $stmt_participants = $pdo->prepare("SELECT user_id FROM conversation_participants WHERE conversation_id = ? AND user_id != ?");
             $stmt_participants->execute([$conv_id, $current_session['user_id']]);
             while ($p = $stmt_participants->fetch()) {

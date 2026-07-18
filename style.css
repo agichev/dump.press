@@ -732,6 +732,22 @@
 
         .msg-row { display: flex; gap: 0; }
         .msg-row-me { justify-content: flex-end; }
+        .msg-long-gap { margin-top: 16px; }
+
+        .msg-date-divider {
+            display: flex; align-items: center; gap: 10px;
+            margin: 16px 0 9px; color: var(--text-muted);
+            font-size: 0.72rem; font-weight: 600;
+        }
+        .msg-date-divider::before,
+        .msg-date-divider::after {
+            content: ''; height: 1px; flex: 1;
+            background: var(--surface-hover);
+        }
+        .msg-date-divider span {
+            padding: 4px 10px; border-radius: 999px;
+            background: var(--surface-elevated); white-space: nowrap;
+        }
 
         .msg-avatar {
             width: 30px; height: 30px; border-radius: 50%;

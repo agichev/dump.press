@@ -115,6 +115,12 @@ async function storeMessage(db, conversationId, senderId, content, replyTo) {
     [conversationId, senderId]
   );
 
+  // An incoming message reopens the conversation for recipients who left it.
+  await db.execute(
+    'UPDATE conversation_participants SET is_deleted = 0 WHERE conversation_id = ? AND user_id != ?',
+    [conversationId, senderId]
+  );
+
   for (const p of participants) {
     await db.execute(
       'INSERT INTO message_status (message_id, user_id, status) VALUES (?, ?, ?)',
@@ -335,6 +341,10 @@ async function processPendingForUser(db, userId) {
 
   for (const pm of pending) {
     const plainContent = decryptServer(pm.content);
+    await db.execute(
+      'UPDATE conversation_participants SET is_deleted = 0 WHERE conversation_id = ? AND user_id = ?',
+      [pm.conversation_id, userId]
+    );
     const [result] = await db.execute(
       'INSERT INTO messages (conversation_id, sender_id, content) VALUES (?, ?, ?)',
       [pm.conversation_id, pm.sender_id, pm.content]
@@ -348,6 +358,10 @@ async function processPendingForUser(db, userId) {
       await db.execute('INSERT INTO message_status (message_id, user_id, status) VALUES (?, ?, ?)',
         [msgId, p.user_id, 'sent']);
     }
+    await db.execute(
+      'UPDATE conversations SET updated_at = NOW() WHERE id = ?',
+      [pm.conversation_id]
+    );
     const [msgRows] = await db.execute(
       `SELECT m.*, u.username, u.avatar_url FROM messages m
        JOIN users u ON m.sender_id = u.id WHERE m.id = ?`, [msgId]
