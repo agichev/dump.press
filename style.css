@@ -960,7 +960,128 @@
             object-fit: cover;
         }
 
-        .msg-image-wrapper { margin-top: 4px; }
+        .msg-image-wrapper {
+            position: relative;
+            width: fit-content;
+            max-width: 100%;
+            margin-top: 4px;
+            border-radius: var(--radius-md);
+            overflow: hidden;
+        }
+        .msg-image-wrapper.loading,
+        .msg-image-wrapper.failed {
+            width: min(260px, 68vw);
+            height: 160px;
+            background: #141414;
+        }
+        .msg-image-wrapper.loading .msg-image {
+            width: 100%;
+            height: 100%;
+            margin-top: 0;
+        }
+        .msg-image-wrapper.loading::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 22px;
+            height: 22px;
+            margin: -11px 0 0 -11px;
+            border: 2px solid rgba(255,255,255,0.2);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            pointer-events: none;
+        }
+        .msg-image-retry {
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            color: var(--text-muted);
+            font-size: 0.78rem;
+        }
+        .msg-image-wrapper.failed .msg-image-retry { display: flex; }
+        .msg-image-wrapper.failed .msg-image-retry:hover { color: var(--text-main); }
+
+        .msg-link {
+            color: var(--text-main);
+            text-decoration: underline;
+            text-decoration-color: rgba(255,255,255,0.55);
+            text-underline-offset: 2px;
+            word-break: break-word;
+            transition: color 0.15s, text-decoration-color 0.15s;
+        }
+        .msg-link:hover {
+            color: #ffffff;
+            text-decoration-color: #ffffff;
+        }
+
+        .msg-file-widget {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: min(300px, 100%);
+            min-width: 210px;
+            margin-top: 4px;
+            padding: 10px 11px;
+            border: 1px solid var(--surface-hover);
+            border-radius: var(--radius-md);
+            background: var(--surface-elevated);
+            cursor: default;
+        }
+        .msg-file-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 38px;
+            height: 38px;
+            flex-shrink: 0;
+            border-radius: 10px;
+            background: var(--surface-active);
+            color: var(--text-main);
+            font-size: 1.45rem;
+        }
+        .msg-file-info {
+            display: flex;
+            flex: 1;
+            flex-direction: column;
+            gap: 3px;
+            min-width: 0;
+        }
+        .msg-file-name {
+            overflow: hidden;
+            color: var(--text-main);
+            font-size: 0.82rem;
+            font-weight: 600;
+            line-height: 1.25;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .msg-file-meta {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: var(--text-muted);
+            font-size: 0.68rem;
+            font-variant-numeric: tabular-nums;
+            text-transform: uppercase;
+        }
+        .msg-file-kind { color: rgba(255,255,255,0.7); font-weight: 700; }
+        .msg-file-separator { opacity: 0.55; }
+        .msg-file-dl {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            flex-shrink: 0;
+            border-radius: 50%;
+            color: var(--text-muted);
+            font-size: 1.05rem;
+        }
 
         .dump-player {
             --dp-accent: #ffffff;
@@ -1329,6 +1450,76 @@
         .chat-upload-preview .remove-preview {
             color: var(--text-muted); font-size: 1.1rem; cursor: pointer;
         }
+        .chat-image-preview,
+        .chat-file-preview {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            flex-shrink: 0;
+        }
+        .chat-file-preview {
+            max-width: 220px;
+            padding: 5px 24px 5px 7px;
+            border: 1px solid var(--surface-hover);
+            border-radius: var(--radius-sm);
+            color: var(--text-muted);
+            font-size: 0.75rem;
+        }
+        .chat-file-preview > span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .chat-file-preview-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            flex-shrink: 0;
+            border-radius: 6px;
+            background: var(--surface-active);
+            color: var(--text-main);
+            font-size: 1rem;
+        }
+        .chat-file-preview .remove-preview {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: var(--surface-active);
+            font-size: 0.65rem;
+        }
+        .chat-image-preview .remove-preview {
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: var(--surface-active);
+            font-size: 0.7rem;
+        }
+        .chat-image-preview-label {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            padding: 1px 5px;
+            border-radius: 4px;
+            background: rgba(0,0,0,0.7);
+            color: #fff;
+            font-size: 0.65rem;
+        }
 
         .icon-btn-sm {
             width: 36px; height: 36px; border-radius: 50%;
@@ -1376,6 +1567,7 @@
             .context-menu { min-width: 200px; }
             .dump-player { width: 72vw; }
             .msg-audio-widget { max-width: 72vw; min-width: 180px; }
+            .msg-file-widget { width: 72vw; min-width: 180px; }
         }
 
         @media (max-width: 480px) {

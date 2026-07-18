@@ -59,7 +59,8 @@ function decryptMessage(string $data): string {
  |  Медиа-прокси (отдаётся раньше JSON-блока)
  | --------------------------------------------------------------------- */
 if ($action === 'proxy') {
-    $url = base64_decode($_GET['url'] ?? '');
+    $encoded_url = str_replace(' ', '+', $_GET['url'] ?? '');
+    $url = base64_decode($encoded_url, true) ?: '';
     $parsed = parse_url($url);
     $is_allowed_host = false;
     if (isset($parsed['host'])) {
@@ -70,24 +71,33 @@ if ($action === 'proxy') {
     }
     if ($is_allowed_host && filter_var($url, FILTER_VALIDATE_URL) && preg_match('/^https?:\/\//i', $url)) {
         if (isset($parsed['port']) && !in_array((int)$parsed['port'], [80, 443], true)) { $is_allowed_host = false; }
-        $context = stream_context_create(['http' => [
-            'method' => 'GET', 'header' => "User-Agent: Dump/6.6\r\n", 'timeout' => 5, 'follow_location' => 0, 'ignore_errors' => true
-        ]]);
-        $image_data = @file_get_contents($url, false, $context);
-        if ($image_data !== false) {
-            $finfo = new finfo(FILEINFO_MIME_TYPE);
-            $mime = $finfo->buffer($image_data);
-            if (strpos($mime, 'image/') === 0) {
-                header("Content-Type: $mime");
-                header("Cache-Control: public, max-age=31536000");
-                header("Content-Security-Policy: default-src 'none'; img-src 'self' data:;");
-                header("X-Content-Type-Options: nosniff");
-                echo $image_data;
-                exit;
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            $context = stream_context_create(['http' => [
+                'method' => 'GET',
+                'header' => "User-Agent: Dump/6.6\r\nAccept: image/avif,image/webp,image/apng,image/*,*/*;q=0.8\r\nConnection: close\r\n",
+                'timeout' => 8,
+                'follow_location' => 0,
+                'ignore_errors' => true,
+            ]]);
+            $image_data = @file_get_contents($url, false, $context);
+            if ($image_data !== false) {
+                $finfo = new finfo(FILEINFO_MIME_TYPE);
+                $mime = $finfo->buffer($image_data);
+                if (strpos($mime, 'image/') === 0) {
+                    header("Content-Type: $mime");
+                    header("Cache-Control: public, max-age=31536000");
+                    header("Content-Security-Policy: default-src 'none'; img-src 'self' data:;");
+                    header("X-Content-Type-Options: nosniff");
+                    echo $image_data;
+                    exit;
+                }
             }
+            if ($attempt < 2) usleep(150000);
         }
     }
+    if (isset($_GET['retryable'])) http_response_code(502);
     header('Content-Type: image/svg+xml');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
     echo '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="#1c1c1c"/></svg>';
     exit;
 }

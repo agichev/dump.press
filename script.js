@@ -3514,6 +3514,7 @@
 
         function showConvList() {
             clearPendingNewChatTimeout();
+            releaseChatBottomPin();
             const convSection = document.getElementById('convListSection');
             const chatSection = document.getElementById('chatSection');
             if (convSection) convSection.classList.remove('hidden');
@@ -3551,7 +3552,7 @@
                 const unread = parseInt(conv.unread_count) || 0;
                 const time = conv.last_message_at ? timeAgo(conv.last_message_at) : '';
 
-                let preview = lastMsg;
+                const preview = getConversationPreview(lastMsg);
                 const blockStyle = blocked ? 'style="filter:grayscale(100%);opacity:0.5;"' : '';
                 const nameStyle = blocked ? 'style="color:var(--text-muted);"' : '';
                 return `<div class="conv-item ${blocked ? 'conv-blocked' : ''}" onclick="openConv(${conv.id})" oncontextmenu="event.preventDefault(); showConvContextMenu(${conv.id}, event)">
@@ -3570,6 +3571,31 @@
                     </div>
                 </div>`;
             }).join('');
+        }
+
+        function getConversationPreview(content) {
+            const text = String(content || '').trim();
+            const urls = text.match(/https?:\/\/[^\s<>"']+/g) || [];
+            const imageHosts = ['ibb.co', 'i.ibb.co', 'imgbb.com', 'i.imgbb.com'];
+            const hasImage = urls.some(url => {
+                if (/\.(gif|png|jpe?g|webp)(?:[?#]|$)/i.test(url) || /opengifs\.webounty\.ru\/g\//i.test(url)) return true;
+                try { return imageHosts.includes(new URL(url).hostname.toLowerCase()); } catch (e) { return false; }
+            });
+            if (hasImage) return 'Картинка';
+
+            const fileMatch = text.match(/\[dumpfile:[^:\]]+:([^:]*):\d+:([^\]]*)\]/i);
+            if (fileMatch) {
+                let name = fileMatch[1] || '';
+                let mime = fileMatch[2] || '';
+                try { name = decodeURIComponent(name); } catch (e) {}
+                try { mime = decodeURIComponent(mime); } catch (e) {}
+                const ext = name.split('.').pop().toLowerCase();
+                if (mime.startsWith('video/') || ['mp4','mov','avi','mkv','webm'].includes(ext)) return 'Видео';
+                if (mime.startsWith('audio/') || ['mp3','wav','ogg','m4a','flac','aac','wma'].includes(ext)) return 'Аудио';
+                return 'Файл';
+            }
+
+            return text;
         }
 
         window.openConv = async function(convId) {
@@ -3610,6 +3636,9 @@
             if (chatMessages) {
                 chatMessages.scrollTop = 0;
                 chatMessages.onscroll = onChatScroll;
+                chatMessages.onwheel = releaseChatBottomPin;
+                chatMessages.ontouchstart = releaseChatBottomPin;
+                chatMessages.onpointerdown = releaseChatBottomPin;
             }
             clearTimeout(historyLoadTimer);
             historyLoadTimer = null;
@@ -3689,9 +3718,9 @@
             let html = parts.map(p => {
                 if (p.type === 'text') return linkify(escHtml(p.content));
                 if (p.type === 'image') {
-                    const proxyUrl = getProxyUrl(p.content);
-                    const safeUrl = p.content.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                    return `<div class="msg-image-wrapper"><img src="${proxyUrl}" class="msg-image" loading="lazy" onclick="event.stopPropagation(); viewChatImage('${safeUrl}')" onerror="this.style.display='none'" oncontextmenu="event.stopPropagation(); event.preventDefault()"></div>`;
+                    const proxyUrl = getChatImageProxyUrl(p.content);
+                    const encodedUrl = encodeURIComponent(p.content);
+                    return `<div class="msg-image-wrapper"><img src="${proxyUrl}" data-image-url="${encodedUrl}" class="msg-image" loading="lazy" onclick="event.stopPropagation(); viewChatImage(decodeURIComponent(this.dataset.imageUrl))" onload="chatImageLoaded(this)" onerror="retryChatImage(this)" oncontextmenu="event.stopPropagation(); event.preventDefault()"><button type="button" class="msg-image-retry" onclick="event.stopPropagation(); retryChatImage(this.previousElementSibling, true)"><i class="ph ph-arrow-clockwise"></i><span>Повторить</span></button></div>`;
                 }
                 const h = p.content.replace(/&quot;/g, '%22').replace(/</g, '%3C').replace(/>/g, '%3E').replace(/&amp;/g, '&');
                 return '<a href="' + h + '" target="_blank" rel="noopener noreferrer" class="msg-link" onclick="event.stopPropagation()">' + p.content + '</a>';
@@ -3706,6 +3735,7 @@
                 const mimeType = decodeURIComponent(d.type || '');
                 const isVideo = mimeType.startsWith('video/') || ['mp4','mov','avi','mkv','webm'].includes(ext);
                 const isAudio = mimeType.startsWith('audio/') || ['mp3','wav','ogg','m4a','flac','aac','wma'].includes(ext);
+                const fileSize = parseInt(d.size, 10) || 0;
                 const downloadUrl = BASE_PATH + '/index.php?api=file_download&key=' + encodeURIComponent(d.key);
                 const inlineUrl = BASE_PATH + '/index.php?api=file_download&inline=1&key=' + encodeURIComponent(d.key);
                 const safeFileNameAttr = encodeURIComponent(decodedName).replace(/'/g, "%27");
@@ -3751,16 +3781,80 @@
                 }
 
                 const icon = getFileIcon(ext);
+                const fileLabel = mimeType.startsWith('application/pdf') || ext === 'pdf' ? 'PDF'
+                    : ['zip', 'rar', '7z', 'tar', 'gz'].includes(ext) ? 'Архив'
+                    : ['doc', 'docx', 'odt'].includes(ext) ? 'Документ'
+                    : ['xls', 'xlsx', 'ods', 'csv'].includes(ext) ? 'Таблица'
+                    : ['ppt', 'pptx', 'odp'].includes(ext) ? 'Презентация'
+                    : ext ? ext.toUpperCase() : 'ФАЙЛ';
                 return `<div class="msg-file-widget" onclick="event.stopPropagation();">
                     <div class="msg-file-icon">${icon}</div>
-                    <span class="msg-file-name">${escHtml(decodedName)}</span>
-                    <span class="msg-file-meta">${formatFileSize(parseInt(d.size))}</span>
-                    <a href="${downloadUrl}" class="msg-file-dl" onclick="event.stopPropagation();" download><i class="ph ph-download-simple"></i></a>
+                    <div class="msg-file-info">
+                        <span class="msg-file-name">${escHtml(decodedName)}</span>
+                        <span class="msg-file-meta"><span class="msg-file-kind">${fileLabel}</span><span class="msg-file-separator">•</span>${formatFileSize(fileSize)}</span>
+                    </div>
+                    <a href="${downloadUrl}" class="msg-file-dl" onclick="event.stopPropagation();" download title="Скачать"><i class="ph ph-download-simple"></i></a>
                 </div>`;
             });
 
             return html;
         }
+
+        function getChatImageProxyUrl(url, retry = 0) {
+            const proxyUrl = getProxyUrl(url);
+            const separator = proxyUrl.includes('?') ? '&' : '?';
+            return proxyUrl + separator + 'retryable=1' + (retry ? '&retry=' + retry : '');
+        }
+
+        function chatImageLoaded(img) {
+            img.style.display = '';
+            img.dataset.retryCount = '0';
+            delete img.dataset.directFallback;
+            const wrapper = img.closest('.msg-image-wrapper');
+            if (wrapper) wrapper.classList.remove('loading', 'failed');
+            keepChatAtBottomAfterMedia(img);
+        }
+
+        function retryChatImage(img, manual = false) {
+            if (!img) return;
+            const wrapper = img.closest('.msg-image-wrapper');
+            let originalUrl = '';
+            try { originalUrl = decodeURIComponent(img.dataset.imageUrl || ''); } catch (e) {}
+            if (!originalUrl) return;
+
+            if (manual) {
+                img.dataset.retryCount = '0';
+                delete img.dataset.directFallback;
+                img.style.display = '';
+            }
+            if (wrapper) wrapper.classList.remove('failed');
+
+            const retryCount = parseInt(img.dataset.retryCount || '0', 10);
+            if (retryCount < 2) {
+                const nextRetry = retryCount + 1;
+                img.dataset.retryCount = String(nextRetry);
+                if (wrapper) wrapper.classList.add('loading');
+                setTimeout(() => {
+                    if (img.isConnected) img.src = getChatImageProxyUrl(originalUrl, nextRetry);
+                }, manual ? 0 : nextRetry * 300);
+                return;
+            }
+
+            if (!img.dataset.directFallback) {
+                img.dataset.directFallback = '1';
+                if (wrapper) wrapper.classList.add('loading');
+                setTimeout(() => {
+                    if (img.isConnected) img.src = originalUrl;
+                }, 300);
+                return;
+            }
+
+            img.style.display = 'none';
+            if (wrapper) wrapper.classList.remove('loading');
+            if (wrapper) wrapper.classList.add('failed');
+        }
+        window.chatImageLoaded = chatImageLoaded;
+        window.retryChatImage = retryChatImage;
 
         function viewChatImage(url) {
             const existing = document.getElementById('imgViewer');
@@ -3981,7 +4075,10 @@
                 media.addEventListener('play', updatePlayIcon);
                 media.addEventListener('pause', updatePlayIcon);
                 media.addEventListener('timeupdate', updateTime);
-                media.addEventListener('loadedmetadata', updateTime);
+                media.addEventListener('loadedmetadata', () => {
+                    updateTime();
+                    keepChatAtBottomAfterMedia(media);
+                });
                 media.addEventListener('ended', () => { media.currentTime = 0; updatePlayIcon(); updateTime(); });
 
                 updatePlayIcon();
@@ -4100,7 +4197,10 @@
                 media.addEventListener('play', updatePlayIcon);
                 media.addEventListener('pause', updatePlayIcon);
                 media.addEventListener('timeupdate', updateTime);
-                media.addEventListener('loadedmetadata', updateTime);
+                media.addEventListener('loadedmetadata', () => {
+                    updateTime();
+                    keepChatAtBottomAfterMedia(media);
+                });
                 media.addEventListener('waiting', () => { if (loader) loader.classList.add('active'); });
                 media.addEventListener('playing', () => { if (loader) loader.classList.remove('active'); });
                 media.addEventListener('canplay', () => { if (loader) loader.classList.remove('active'); });
@@ -4147,8 +4247,8 @@
         async function renderMessages(keepPosition = false) {
             const container = document.getElementById('chatMessagesInner');
             const scrollContainer = document.getElementById('chatMessages');
-            const renderedConvId = currentConvId;
             const msgs = messengerMessages[currentConvId] || [];
+            const isInitialRender = container.childElementCount === 0;
 
             if (!msgs.length) {
                 container.innerHTML = `<div class="empty-state" style="min-height:200px;"><i class="ph ph-chat-circle"></i><p>Нет сообщений. Напишите первым!</p></div>`;
@@ -4238,6 +4338,7 @@
 
             container.innerHTML = html;
             initDumpPlayers(container);
+            if (isInitialRender) beginChatBottomPin(container);
 
             if (playerStates.length) {
                 container.querySelectorAll('.dump-player, .msg-audio-widget').forEach(p => {
@@ -4267,6 +4368,37 @@
         function isChatNearBottom(container, threshold = 80) {
             if (!container) return false;
             return container.scrollHeight - container.clientHeight - container.scrollTop <= threshold;
+        }
+
+        let chatBottomPinUntil = 0;
+        let chatResizeObserver = null;
+
+        function beginChatBottomPin(content) {
+            chatBottomPinUntil = Date.now() + 4000;
+            if (chatResizeObserver) chatResizeObserver.disconnect();
+            if (window.ResizeObserver) {
+                chatResizeObserver = new ResizeObserver(() => {
+                    if (Date.now() < chatBottomPinUntil) scrollChatDown();
+                });
+                chatResizeObserver.observe(content);
+            }
+            scrollChatDown();
+            requestAnimationFrame(scrollChatDown);
+            setTimeout(() => {
+                if (Date.now() < chatBottomPinUntil) scrollChatDown();
+            }, 100);
+        }
+
+        function releaseChatBottomPin() {
+            chatBottomPinUntil = 0;
+        }
+
+        function keepChatAtBottomAfterMedia(element) {
+            const container = document.getElementById('chatMessages');
+            if (!container || !element.closest('#chatMessagesInner')) return;
+            if (Date.now() < chatBottomPinUntil || isChatNearBottom(container, 320)) {
+                requestAnimationFrame(scrollChatDown);
+            }
         }
 
         function scrollChatDown() {
@@ -4361,7 +4493,7 @@
             const input = document.getElementById('chatInput');
             let content = input.value.trim();
             if (pendingAttachments.length) {
-                content = (content ? content + '\n' : '') + pendingAttachments.join('\n');
+                content = (content ? content + '\n' : '') + pendingAttachments.map(attachment => attachment.content).join('\n');
             }
             if (!content) return;
             if (!currentConvId) return;
@@ -4824,9 +4956,10 @@
                 const data = await res.json();
                 if (data.success && data.gifs.length) {
                     grid.innerHTML = data.gifs.map(g => {
-                        const url = g.image_url.replace(/'/g, "\\'");
-                        const desc = (g.description || 'GIF').replace(/'/g, "\\'");
-                        return `<div class="gif-item" onclick="insertGif('${url}')" title="${desc}"><img src="${getProxyUrl(g.image_url)}" alt="" loading="lazy"></div>`;
+                        const imageUrl = g.gif_url || g.image_url || '';
+                        const url = imageUrl.replace(/'/g, "\\'");
+                        const desc = (g.title || g.description || 'GIF').replace(/'/g, "\\'");
+                        return `<div class="gif-item" onclick="insertGif('${url}')" title="${desc}"><img src="${getProxyUrl(imageUrl)}" alt="" loading="lazy"></div>`;
                     }).join('');
                 } else {
                     grid.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text-muted);">Ничего не найдено</div>';
@@ -4855,16 +4988,18 @@
             const files = Array.from(input.files || []);
             input.value = '';
             if (!files.length) return;
-            uploadChatImages(files);
+            uploadChatFiles(files);
         }
         window.handleChatFiles = handleChatFiles;
 
-        async function uploadChatImages(files) {
+        async function uploadChatFiles(files) {
             const progress = showChatUploadProgress(files.length);
             for (const file of files) {
-                const url = await uploadToImgBBChat(file);
-                if (url) {
-                    pendingAttachments.push(url);
+                const attachment = file.type.startsWith('image/')
+                    ? await uploadToImgBBChat(file)
+                    : await uploadToDumpStorage(file);
+                if (attachment) {
+                    pendingAttachments.push(attachment);
                     renderAttachmentPreviews();
                 }
             }
@@ -4880,11 +5015,18 @@
                 const form = document.getElementById('chatForm');
                 form.parentNode.insertBefore(container, form);
             }
-            container.innerHTML = pendingAttachments.map((url, i) => {
-                const isGif = /\.gif(\?.*)?$/i.test(url);
-                return `<div style="position:relative;flex-shrink:0;">
-                    <img src="${getProxyUrl(url)}" style="width:56px;height:56px;border-radius:8px;object-fit:cover;">
-                    ${isGif ? '<span style="position:absolute;top:2px;left:2px;background:rgba(0,0,0,0.7);color:#fff;font-size:0.65rem;padding:1px 5px;border-radius:4px;">GIF</span>' : ''}
+            container.innerHTML = pendingAttachments.map((attachment, i) => {
+                if (!attachment.isImage) {
+                    return `<div class="chat-file-preview">
+                        <div class="chat-file-preview-icon">${getFileIcon(attachment.name.split('.').pop().toLowerCase())}</div>
+                        <span>${escHtml(attachment.name)}</span>
+                        <button type="button" class="remove-preview" onclick="removeAttachment(${i})" aria-label="Удалить вложение"><i class="ph ph-x"></i></button>
+                    </div>`;
+                }
+                const isGif = /\.gif(\?.*)?$/i.test(attachment.content);
+                return `<div class="chat-image-preview">
+                    <img src="${getProxyUrl(attachment.content)}" alt="" style="width:56px;height:56px;border-radius:8px;object-fit:cover;">
+                    ${isGif ? '<span class="chat-image-preview-label">GIF</span>' : ''}
                     <button type="button" class="remove-preview" onclick="removeAttachment(${i})" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;background:var(--surface-active);border-radius:50%;font-size:0.7rem;display:flex;align-items:center;justify-content:center;"><i class="ph ph-x"></i></button>
                 </div>`;
             }).join('');
@@ -4904,7 +5046,7 @@
             const el = document.createElement('div');
             el.id = 'chatUploadProgress';
             el.className = 'chat-upload-progress';
-            el.innerHTML = `<i class="ph ph-spinner spin spinner"></i> Загрузка ${count} изображени${count > 1 ? 'й' : 'я'}...`;
+            el.innerHTML = `<i class="ph ph-spinner spin spinner"></i> Загрузка ${count} файл${count > 1 ? 'ов' : 'а'}...`;
             const form = document.getElementById('chatForm');
             form.parentNode.insertBefore(el, form);
             return { remove: () => el.remove() };
@@ -4917,8 +5059,31 @@
             try {
                 const res = await fetch(apiCall('upload_image'), { method: 'POST', body: fd });
                 const data = await res.json();
-                return data.success ? data.url : null;
+                if (!data.success) {
+                    showToast(data.error || 'Не удалось загрузить изображение');
+                    return null;
+                }
+                return { content: data.url, name: file.name, type: file.type, isImage: true };
             } catch {
+                showToast('Ошибка загрузки изображения');
+                return null;
+            }
+        }
+
+        async function uploadToDumpStorage(file) {
+            const fd = new FormData();
+            fd.append('file', file);
+            fd.append('csrf_token', csrfToken);
+            try {
+                const res = await fetch(apiCall('upload_file'), { method: 'POST', body: fd });
+                const data = await res.json();
+                if (!data.success) {
+                    showToast(data.error || 'Не удалось загрузить файл');
+                    return null;
+                }
+                return { content: data.tag, name: data.file_name || file.name, type: file.type || 'application/octet-stream', isImage: false };
+            } catch {
+                showToast('Ошибка загрузки файла');
                 return null;
             }
         }
@@ -4939,7 +5104,7 @@
             }
             if (files.length) {
                 e.preventDefault();
-                uploadChatImages(files);
+                uploadChatFiles(files);
             }
         });
 
@@ -4948,8 +5113,8 @@
             chatInputEl.addEventListener('dragover', (e) => { e.preventDefault(); });
             chatInputEl.addEventListener('drop', (e) => {
                 e.preventDefault();
-                const files = Array.from(e.dataTransfer.files || []).filter(f => f.type.startsWith('image/'));
-                if (files.length) uploadChatImages(files);
+                const files = Array.from(e.dataTransfer.files || []);
+                if (files.length) uploadChatFiles(files);
             });
         }
 

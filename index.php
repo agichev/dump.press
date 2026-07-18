@@ -144,9 +144,9 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
 
-    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=44" as="style">
-    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/script.js?v=44" as="script">
-    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=44">
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=50" as="style">
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/script.js?v=50" as="script">
+    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=50">
 
     <?php if ($recaptcha_enabled): ?>
     <style>.grecaptcha-badge{visibility:hidden!important;opacity:0!important}</style>
@@ -203,7 +203,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
         const getProxyUrl = (url) => {
             if (!url) return '';
             if (url.includes('/index.php?api=proxy')) return url;
-            try { return BASE_PATH + '/index.php?api=proxy&url=' + btoa(url); }
+            try { return BASE_PATH + '/index.php?api=proxy&url=' + encodeURIComponent(btoa(url)); }
             catch(e) { return url; }
         };
 
@@ -792,7 +792,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
                     </div>
                 </div>
                 <form id="chatForm" class="chat-input-area" onsubmit="sendChatMessage(event)" novalidate>
-                    <input type="file" id="chatFileInput" accept="image/*" multiple style="display:none" onchange="handleChatFiles(this)">
+                    <input type="file" id="chatFileInput" accept="*/*" multiple style="display:none" onchange="handleChatFiles(this)">
                     <button type="button" class="chat-attach-btn" id="chatAttachBtn" onclick="document.getElementById('chatFileInput').click()" aria-label="Прикрепить"><i class="ph ph-paperclip"></i></button>
                     <button type="button" class="chat-attach-btn" onclick="openChatEmoji()" aria-label="Эмодзи"><i class="ph ph-smiley"></i></button>
                     <textarea id="chatInput" class="chat-input" placeholder="Сообщение..." rows="1" maxlength="5000" enterkeyhint="send" oninput="resizeTextarea(this); onChatTyping();" onkeydown="chatInputKeydown(event)"></textarea>
@@ -878,7 +878,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
             </form>
         </div>
     </div>
-    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=44"></script>
+    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=50"></script>
 
     <?php if ($is_mobile): ?>
     <style>
