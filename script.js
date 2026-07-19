@@ -4061,8 +4061,15 @@
                 const media = player.querySelector('audio');
                 if (!media) return;
                 media.addEventListener('error', () => markDumpFileExpired(player), { once: true });
-                media.src = player.dataset.src;
-                media.load();
+                const audioSrc = player.dataset.src;
+                checkDumpFileAvailable(audioSrc).then(available => {
+                    if (available === false) {
+                        markDumpFileExpired(player);
+                        return;
+                    }
+                    media.src = audioSrc;
+                    media.load();
+                });
 
                 const playBtn = player.querySelector('.msg-audio-play');
                 const progressWrap = player.querySelector('.msg-audio-progress');
@@ -4155,8 +4162,15 @@
                 const media = player.querySelector('video, audio');
                 if (!media) return;
                 media.addEventListener('error', () => markDumpFileExpired(player), { once: true });
-                media.src = player.dataset.src;
-                media.load();
+                const videoSrc = player.dataset.src;
+                checkDumpFileAvailable(videoSrc).then(available => {
+                    if (available === false) {
+                        markDumpFileExpired(player);
+                        return;
+                    }
+                    media.src = videoSrc;
+                    media.load();
+                });
 
                 const isVideo = player.classList.contains('dump-player-video');
                 const playBtn = player.querySelector('.dump-player-play');

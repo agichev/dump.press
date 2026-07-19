@@ -2,12 +2,19 @@
 declare(strict_types=1);
 
 function r2_config(): array {
+    $accessKey = env('R2_ACCESS_KEY', '');
+    $secretKey = env('R2_SECRET_KEY', '');
+    if ($accessKey === '' || $secretKey === '') {
+        throw new RuntimeException(
+            'R2 credentials missing. Set R2_ACCESS_KEY and R2_SECRET_KEY in .env.'
+        );
+    }
     return [
-        'endpoint' => 'https://7793fc64df543c3494014fa9511ed524.r2.cloudflarestorage.com',
-        'bucket' => 'dump',
-        'access_key' => '05597040d0bbf2c6b682b9962862c872',
-        'secret_key' => '4ddb99bbbdbf9ffb05e54278a6f49425b2b6ea41ec33c946b8b9c3a7b9920241',
-        'region' => 'auto',
+        'endpoint'   => rtrim(env('R2_ENDPOINT', 'https://' . env('R2_ACCOUNT_ID', '') . '.r2.cloudflarestorage.com'), '/'),
+        'bucket'     => env('R2_BUCKET', 'dump'),
+        'access_key' => $accessKey,
+        'secret_key' => $secretKey,
+        'region'     => env('R2_REGION', 'auto'),
     ];
 }
 
