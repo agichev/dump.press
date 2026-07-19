@@ -1099,6 +1099,54 @@
             font-size: 1.05rem;
         }
 
+        .dump-player.dump-file-expired,
+        .msg-audio-widget.dump-file-expired,
+        .msg-file-widget.dump-file-expired {
+            width: min(320px, 80vw);
+            min-width: 210px;
+            min-height: 68px;
+            max-height: none;
+            padding: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: var(--radius-md);
+            background: var(--surface-elevated);
+            overflow: hidden;
+        }
+        .dump-file-expired-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+        }
+        .dump-file-expired-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 38px;
+            height: 38px;
+            flex-shrink: 0;
+            border-radius: 10px;
+            background: var(--surface-active);
+            color: var(--text-muted);
+            font-size: 1.35rem;
+        }
+        .dump-file-expired-copy {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            min-width: 0;
+        }
+        .dump-file-expired-copy strong {
+            color: var(--text-main);
+            font-size: 0.82rem;
+            line-height: 1.25;
+        }
+        .dump-file-expired-copy span {
+            color: var(--text-muted);
+            font-size: 0.7rem;
+            line-height: 1.3;
+        }
+
         .dump-player {
             --dp-accent: #ffffff;
             position: relative;

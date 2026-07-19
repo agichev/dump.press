@@ -2,7 +2,8 @@
 declare(strict_types=1);
 
 /**
- * Подключение к БД и авто-миграции схемы.
+ * Подключение к БД.
+ * Миграции запускаются отдельно: php app/tools/migrate.php
  */
 
 $db_host     = $GLOBALS['db_host'];
@@ -19,6 +20,11 @@ try {
         PDO::ATTR_PERSISTENT => true,
     ]);
 
+    // Схема не должна проверяться и изменяться на каждом HTTP-запросе.
+    if (!env_bool('DB_AUTO_MIGRATE', false)) {
+        $pdo->exec("USE `$db_name`");
+        $pdo->exec("SET time_zone = '+00:00'");
+    } else {
     $pdo->exec("CREATE DATABASE IF NOT EXISTS `$db_name` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
     $pdo->exec("USE `$db_name`");
     $pdo->exec("SET time_zone = '+00:00'");
@@ -113,8 +119,13 @@ try {
     try { $pdo->exec("CREATE UNIQUE INDEX idx_posts_slug ON posts(slug)"); } catch (PDOException $e) {}
     try { $pdo->exec("CREATE FULLTEXT INDEX idx_fulltext_content ON posts(content)"); } catch (PDOException $e) {}
     try { $pdo->exec("CREATE INDEX idx_posts_user_time ON posts(user_id, created_at)"); } catch (PDOException $e) {}
+    try { $pdo->exec("CREATE INDEX idx_posts_created ON posts(created_at, id)"); } catch (PDOException $e) {}
     try { $pdo->exec("CREATE INDEX idx_likes_post ON likes(post_id)"); } catch (PDOException $e) {}
     try { $pdo->exec("CREATE INDEX idx_comments_post ON comments(post_id)"); } catch (PDOException $e) {}
+    try { $pdo->exec("CREATE INDEX idx_comments_post_created ON comments(post_id, created_at)"); } catch (PDOException $e) {}
+    try { $pdo->exec("CREATE INDEX idx_follows_following_follower ON follows(following_id, follower_id)"); } catch (PDOException $e) {}
+    try { $pdo->exec("CREATE INDEX idx_views_post ON views(post_id)"); } catch (PDOException $e) {}
+    try { $pdo->exec("CREATE INDEX idx_sessions_expiry ON sessions(expires_at)"); } catch (PDOException $e) {}
 
     try { $pdo->exec("ALTER TABLE users ADD COLUMN tfa_enabled TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE users ADD COLUMN tfa_method VARCHAR(20) DEFAULT ''"); } catch (PDOException $e) {}
@@ -237,6 +248,7 @@ try {
             UNIQUE KEY (token)
         );
     ");
+    try { $pdo->exec("CREATE INDEX idx_notifications_user_created ON notifications(user_id, created_at, id)"); } catch (PDOException $e) {}
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS blocked_users (
@@ -281,6 +293,7 @@ try {
     ");
 
     $pdo->exec("UPDATE posts SET slug = SUBSTRING(MD5(RAND()), 1, 10) WHERE slug IS NULL OR slug = ''");
+    }
 
 } catch (PDOException $e) {
     die("Критическая ошибка БД: Сервис временно недоступен.");

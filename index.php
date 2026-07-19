@@ -214,16 +214,9 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
             catch(e) { return url; }
         };
 
-        // Определяем реальный IPv4 клиента через внешнее IPv4-only API.
-        let __clientIp = '';
-        let __clientIpPromise = fetch('https://checkip.amazonaws.com/', { mode: 'cors' })
-            .then(r => r.text())
-            .then(t => { window.__clientIp = t.trim(); })
-            .catch(() => {});
-        const __waitForIp = () => Promise.race([
-            __clientIpPromise,
-            new Promise(r => setTimeout(r, 3000))
-        ]);
+        // IP определяется сервером. Внешний запрос добавлял лишний запрос
+        // DNS/TLS/HTTP на каждую загрузку страницы.
+        const __waitForIp = () => Promise.resolve();
 
         function fireConfetti() {
             const colors = ['#ff2a5f', '#f5a623', '#ffffff', '#60a5fa', '#34d399'];

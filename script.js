@@ -683,7 +683,6 @@
             const fd = new FormData(form);
             fd.append('csrf_token', csrfToken || '');
             if (recaptchaToken) fd.append('recaptcha_token', recaptchaToken);
-            if (window.__clientIp) fd.append('client_ip', window.__clientIp);
 
             const btn = setFormState(form, true);
             const origText = btn.textContent;
@@ -786,7 +785,6 @@
             const fd = new FormData(form);
             fd.append('csrf_token', csrfToken || '');
             fd.append('turnstile_token', token);
-            if (window.__clientIp) fd.append('client_ip', window.__clientIp);
 
             const btn = form.querySelector('button[type="submit"]');
             const origText = btn ? btn.textContent : '';
@@ -912,7 +910,6 @@
                 const fd = new FormData();
                 fd.append('temp_token', tfaLoginTempToken);
                 fd.append('code', code);
-                if (window.__clientIp) fd.append('client_ip', window.__clientIp);
                 
                 const res = await fetch(apiCall('tfa_verify_login'), { method: 'POST', body: fd });
                 const data = await res.json();
@@ -3696,6 +3693,57 @@
             }
         }
 
+        const DUMP_FILE_EXPIRED_TEXT = 'Файл был удалён — прошло 24 часа.';
+
+        function renderDumpFileExpired() {
+            return `<div class="dump-file-expired-content">
+                <i class="ph ph-clock-countdown dump-file-expired-icon"></i>
+                <div class="dump-file-expired-copy">
+                    <strong>Файл был удалён</strong>
+                    <span>Прошло 24 часа — срок хранения истёк</span>
+                </div>
+            </div>`;
+        }
+
+        function markDumpFileExpired(element) {
+            const widget = element?.matches?.('.dump-player, .msg-audio-widget, .msg-file-widget')
+                ? element
+                : element?.closest?.('.dump-player, .msg-audio-widget, .msg-file-widget');
+            if (!widget || widget.dataset.dumpExpired === '1') return;
+            widget.dataset.dumpExpired = '1';
+            widget.classList.add('dump-file-expired');
+            widget.innerHTML = renderDumpFileExpired();
+            widget.setAttribute('role', 'status');
+            widget.setAttribute('aria-label', DUMP_FILE_EXPIRED_TEXT);
+        }
+
+        async function checkDumpFileAvailable(url) {
+            if (!url) return null;
+            const separator = url.includes('?') ? '&' : '?';
+            try {
+                const response = await fetch(url + separator + 'status=1', {
+                    cache: 'no-store',
+                    credentials: 'same-origin'
+                });
+                return response.ok;
+            } catch (e) {
+                // A network failure should not turn a temporary outage into a deletion notice.
+                return null;
+            }
+        }
+
+        async function handleDumpFileDownload(event, link) {
+            event.preventDefault();
+            event.stopPropagation();
+            const available = await checkDumpFileAvailable(link?.href || '');
+            if (available === false) {
+                markDumpFileExpired(link);
+                return;
+            }
+            if (link?.href) window.location.href = link.href;
+        }
+        window.handleDumpFileDownload = handleDumpFileDownload;
+
         function renderMsgBody(text) {
             if (!text) return '';
 
@@ -3787,7 +3835,7 @@
                                 <span class="msg-audio-time">0:00</span>
                             </div>
                         </div>
-                        <a href="${downloadUrl}" class="msg-audio-download" onclick="event.stopPropagation();" download><i class="ph ph-download-simple"></i></a>
+                        <a href="${downloadUrl}" class="msg-audio-download" onclick="handleDumpFileDownload(event, this)" download><i class="ph ph-download-simple"></i></a>
                     </div>`;
                 }
 
@@ -3804,7 +3852,7 @@
                         <span class="msg-file-name">${escHtml(decodedName)}</span>
                         <span class="msg-file-meta"><span class="msg-file-kind">${fileLabel}</span><span class="msg-file-separator">•</span>${formatFileSize(fileSize)}</span>
                     </div>
-                    <a href="${downloadUrl}" class="msg-file-dl" onclick="event.stopPropagation();" download title="Скачать"><i class="ph ph-download-simple"></i></a>
+                    <a href="${downloadUrl}" class="msg-file-dl" onclick="handleDumpFileDownload(event, this)" download title="Скачать"><i class="ph ph-download-simple"></i></a>
                 </div>`;
             });
 
@@ -3950,13 +3998,18 @@
             return `${m}:${String(s).padStart(2,'0')}`;
         }
 
-        function downloadDumpMedia(btn) {
+        async function downloadDumpMedia(btn) {
             const player = btn.closest('.dump-player, .msg-audio-widget');
             if (!player) return;
             const url = player.dataset.download;
             let filename = player.dataset.filename || 'download';
             try { filename = decodeURIComponent(filename); } catch(e) {}
             if (!url) return;
+            const available = await checkDumpFileAvailable(url);
+            if (available === false) {
+                markDumpFileExpired(player);
+                return;
+            }
             const a = document.createElement('a');
             a.href = url;
             a.download = filename;
@@ -4007,6 +4060,7 @@
                 player.setAttribute('data-dump-initialized', '1');
                 const media = player.querySelector('audio');
                 if (!media) return;
+                media.addEventListener('error', () => markDumpFileExpired(player), { once: true });
                 media.src = player.dataset.src;
                 media.load();
 
@@ -4100,6 +4154,7 @@
                 player.setAttribute('data-dump-initialized', '1');
                 const media = player.querySelector('video, audio');
                 if (!media) return;
+                media.addEventListener('error', () => markDumpFileExpired(player), { once: true });
                 media.src = player.dataset.src;
                 media.load();
 
@@ -5113,6 +5168,9 @@
         }
 
         async function uploadToImgBBChat(file) {
+            // Чат раньше отправлял оригинал без оптимизации. Используем тот же
+            // безопасный ресайз, что и для публикаций, не меняя URL и API.
+            file = await compressImage(file);
             const fd = new FormData();
             fd.append('image', file);
             fd.append('csrf_token', csrfToken);

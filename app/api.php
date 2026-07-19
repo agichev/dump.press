@@ -1388,6 +1388,33 @@ try {
             break;
 
         case 'file_download':
+            $fileKey = trim($_GET['key'] ?? '');
+
+            // Lightweight availability check used by the messenger before starting a download.
+            if (($_GET['status'] ?? '') === '1') {
+                if (!$fileKey) {
+                    http_response_code(404);
+                    echo json_encode(['success' => false, 'error' => 'Файл не найден']);
+                    exit;
+                }
+
+                $statusStmt = $pdo->prepare("SELECT expires_at FROM uploaded_files WHERE r2_key = ?");
+                $statusStmt->execute([$fileKey]);
+                $statusFile = $statusStmt->fetch();
+                if (!$statusFile) {
+                    http_response_code(404);
+                    echo json_encode(['success' => false, 'error' => 'Файл не найден']);
+                    exit;
+                }
+                if (strtotime($statusFile['expires_at']) < time()) {
+                    http_response_code(410);
+                    echo json_encode(['success' => false, 'error' => 'Файл был удалён — прошло 24 часа']);
+                    exit;
+                }
+                echo json_encode(['success' => true]);
+                exit;
+            }
+
             // Периодическая очистка просроченных
             if (mt_rand(0, 9) === 0) {
                 $cleanStmt = $pdo->prepare("SELECT id, r2_key FROM uploaded_files WHERE expires_at < NOW()");
@@ -1398,7 +1425,6 @@ try {
                 $pdo->prepare("DELETE FROM uploaded_files WHERE expires_at < NOW()")->execute();
             }
 
-            $fileKey = trim($_GET['key'] ?? '');
             if (!$fileKey) { http_response_code(404); exit; }
 
             $stmt = $pdo->prepare("SELECT file_name, file_type, r2_key, expires_at FROM uploaded_files WHERE r2_key = ?");
@@ -1410,6 +1436,7 @@ try {
                 r2_delete_object($file['r2_key']);
                 $pdo->prepare("DELETE FROM uploaded_files WHERE r2_key = ?")->execute([$fileKey]);
                 http_response_code(410);
+                header('Content-Type: text/plain; charset=UTF-8');
                 echo 'Файл удалён (истёк срок хранения)';
                 exit;
             }
