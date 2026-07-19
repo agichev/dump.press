@@ -5305,7 +5305,7 @@
                     const noTrack = data.privacy.privacy_no_track != 0;
                     document.getElementById('privacyNoTrack').checked = noTrack;
                     if (currentUser) currentUser.privacy_no_track = noTrack ? 1 : 0;
-                    applyNoTrack(noTrack);
+                    if (noTrack) applyNoTrack(true);
                 }
             } catch (e) {}
         }
@@ -5379,10 +5379,14 @@
             } catch(e) {}
         }
 
-        window.togglePrivacyNoTrack = function(el) {
-            savePrivacySetting('privacy_no_track', el.checked);
-            if (currentUser) currentUser.privacy_no_track = el.checked ? 1 : 0;
-            applyNoTrack(el.checked);
+        window.togglePrivacyNoTrack = async function(el) {
+            const enabled = el.checked;
+            await savePrivacySetting('privacy_no_track', enabled);
+            if (currentUser) currentUser.privacy_no_track = enabled ? 1 : 0;
+            applyNoTrack(enabled);
+            if (!enabled) {
+                location.reload();
+            }
         };
 
         /* ─── КНОПКА «НАПИСАТЬ» НА ПРОФИЛЕ ────────── */

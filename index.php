@@ -159,9 +159,9 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
 
-    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=55" as="style">
-    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/script.js?v=55" as="script">
-    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=55">
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=57" as="style">
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/script.js?v=57" as="script">
+    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=57">
 
     <?php if ($recaptcha_enabled): ?>
     <style>.grecaptcha-badge{visibility:hidden!important;opacity:0!important}</style>
@@ -895,7 +895,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
             </form>
         </div>
     </div>
-    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=55"></script>
+    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=57"></script>
 
     <?php if ($is_mobile): ?>
     <style>

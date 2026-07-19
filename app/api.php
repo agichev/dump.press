@@ -312,7 +312,7 @@ try {
 
         case 'me':
             if ($current_session) {
-                $stmt = $pdo->prepare("SELECT id, username, email, avatar_url, bio, created_at, tfa_enabled, bookmarks_public, privacy_searchable, privacy_messages, privacy_beta, captcha_required, privacy_no_ads FROM users WHERE id = ?");
+                $stmt = $pdo->prepare("SELECT id, username, email, avatar_url, bio, created_at, tfa_enabled, bookmarks_public, privacy_searchable, privacy_messages, privacy_beta, captcha_required, privacy_no_ads, privacy_no_track FROM users WHERE id = ?");
                 $stmt->execute([$current_session['user_id']]);
                 $user = $stmt->fetch();
                 $user['username'] = htmlspecialchars($user['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');

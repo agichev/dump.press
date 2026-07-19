@@ -1103,6 +1103,7 @@
             --dp-accent: #ffffff;
             position: relative;
             width: min(320px, 80vw);
+            max-width: 100%;
             max-height: 260px;
             border-radius: var(--radius-md);
             background: #000;
@@ -1581,7 +1582,7 @@
             .reply-indicator { margin-left: 0; margin-right: 0; padding-left: 0.75rem; padding-right: 0.75rem; }
             .emoji-picker { max-height: 170px; }
             .context-menu { min-width: 200px; }
-            .dump-player { width: 72vw; }
+            .dump-player { width: 100%; max-width: 100%; }
             .msg-audio-widget { max-width: 72vw; min-width: 180px; }
             .msg-file-widget { width: 72vw; min-width: 180px; }
         }
