@@ -32,33 +32,23 @@ $apk_url = 'https://github.com/agichev/dump.mobile/releases/download/1.2/dump.ap
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
-    <!-- Yandex.Metrika counter -->
+    <!-- WireBoard tag -->
     <script type="text/javascript">
-        (function(m,e,t,r,i,k,a){
-            m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
-            m[i].l=1*new Date();
-            for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
-            k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
-        })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=110594045', 'ym');
-
-        ym(110594045, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});
+    ;(function(w,i,r,e,b,oar,d){if(!w[b]){w.WireBoardNamespace=w.WireBoardNamespace||[];
+    w.WireBoardNamespace.push(b);w[b]=function(){(w[b].q=w[b].q||[]).push(arguments)};
+    w[b].q=w[b].q||[];oar=i.createElement(r);d=i.getElementsByTagName(r)[0];oar.async=1;
+    oar.src=e;d.parentNode.insertBefore(oar,d)}}(window,document,"script","https://static.wireboard.io/wireboard.js","wireboard"));
+    wireboard('newTracker', 'wb', 'pipeline-0.collector.wireboard.io', {
+        appId: 'FZpCjcao',
+        forceSecureTracker: true,
+        contexts: {
+          performanceTiming: true,
+        }
+    });
+    window.wireboard('enableActivityTracking', 5, 10);
+    var customContext=[{schema:'wb:io.wireboard/publisher',data:{publisher:'0c66f34d-03e9-42bf-ae40-0c109f6d4aa0'}}]
+    window.wireboard('trackPageView', null, customContext);
     </script>
-    <noscript><div><img src="https://mc.yandex.ru/watch/110594045" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
-    <!-- /Yandex.Metrika counter -->
-    <!-- Top.Mail.Ru counter -->
-    <script type="text/javascript">
-    var _tmr = window._tmr || (window._tmr = []);
-    _tmr.push({id: "3779137", type: "pageView", start: (new Date()).getTime()});
-    (function (d, w, id) {
-      if (d.getElementById(id)) return;
-      var ts = d.createElement("script"); ts.type = "text/javascript"; ts.async = true; ts.id = id;
-      ts.src = "https://top-fwz1.mail.ru/js/code.js";
-      var f = function () {var s = d.getElementsByTagName("script")[0]; s.parentNode.insertBefore(ts, s);};
-      if (w.opera == "[object Opera]") { d.addEventListener("DOMContentLoaded", f, false); } else { f(); }
-    })(document, window, "tmr-code");
-    </script>
-    <noscript><div><img src="https://top-fwz1.mail.ru/counter?id=3779137;js=na" style="position:absolute;left:-9999px;" alt="Top.Mail.Ru" /></div></noscript>
-    <!-- /Top.Mail.Ru counter -->
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
         body {
