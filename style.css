@@ -975,6 +975,13 @@
             cursor: pointer; display: block; margin-top: 4px;
             object-fit: cover;
         }
+        .msg-image.lazy {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .msg-image.loaded {
+            opacity: 1;
+        }
 
         .msg-image-wrapper {
             position: relative;

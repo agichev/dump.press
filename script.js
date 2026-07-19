@@ -3779,7 +3779,7 @@
                 if (p.type === 'image') {
                     const proxyUrl = getChatImageProxyUrl(p.content);
                     const encodedUrl = encodeURIComponent(p.content);
-                    return `<div class="msg-image-wrapper"><img src="${proxyUrl}" data-image-url="${encodedUrl}" class="msg-image" loading="lazy" onclick="event.stopPropagation(); viewChatImage(decodeURIComponent(this.dataset.imageUrl))" onload="chatImageLoaded(this)" onerror="retryChatImage(this)" oncontextmenu="event.stopPropagation(); event.preventDefault()"><button type="button" class="msg-image-retry" onclick="event.stopPropagation(); retryChatImage(this.previousElementSibling, true)"><i class="ph ph-arrow-clockwise"></i><span>Повторить</span></button></div>`;
+                    return `<div class="msg-image-wrapper loading"><img data-src="${proxyUrl}" data-image-url="${encodedUrl}" class="msg-image lazy" onclick="event.stopPropagation(); viewChatImage(decodeURIComponent(this.dataset.imageUrl))" onload="chatImageLoaded(this)" onerror="retryChatImage(this)" oncontextmenu="event.stopPropagation(); event.preventDefault()"><button type="button" class="msg-image-retry" onclick="event.stopPropagation(); retryChatImage(this.previousElementSibling, true)"><i class="ph ph-arrow-clockwise"></i><span>Повторить</span></button></div>`;
                 }
                 const h = p.content.replace(/&quot;/g, '%22').replace(/</g, '%3C').replace(/>/g, '%3E').replace(/&amp;/g, '&');
                 return '<a href="' + h + '" target="_blank" rel="noopener noreferrer" class="msg-link" onclick="event.stopPropagation()">' + p.content + '</a>';
@@ -3867,6 +3867,8 @@
 
         function chatImageLoaded(img) {
             img.style.display = '';
+            img.classList.remove('lazy');
+            img.classList.add('loaded');
             img.dataset.retryCount = '0';
             delete img.dataset.directFallback;
             const wrapper = img.closest('.msg-image-wrapper');
@@ -3885,6 +3887,8 @@
                 img.dataset.retryCount = '0';
                 delete img.dataset.directFallback;
                 img.style.display = '';
+                img.classList.remove('loaded');
+                img.classList.add('lazy');
             }
             if (wrapper) wrapper.classList.remove('failed');
 
@@ -4435,6 +4439,7 @@
 
             container.innerHTML = html;
             initDumpPlayers(container);
+            observeChatImages();
             if (isInitialRender) beginChatBottomPin(container);
 
             if (playerStates.length) {
@@ -4460,6 +4465,30 @@
                     if (currentConvId == renderedConvId) onChatScroll();
                 });
             }
+        }
+
+        let chatImageObserver = null;
+        function getChatImageObserver() {
+            if (chatImageObserver) return chatImageObserver;
+            chatImageObserver = new IntersectionObserver((entries) => {
+                for (const entry of entries) {
+                    if (!entry.isIntersecting) continue;
+                    const img = entry.target;
+                    chatImageObserver.unobserve(img);
+                    const src = img.dataset.src;
+                    if (src) {
+                        img.src = src;
+                        img.classList.remove('lazy');
+                    }
+                }
+            }, { root: document.getElementById('chatMessages'), rootMargin: '400px 0px', threshold: 0 });
+            return chatImageObserver;
+        }
+        function observeChatImages() {
+            const observer = getChatImageObserver();
+            document.querySelectorAll('#chatMessagesInner .msg-image.lazy').forEach(img => {
+                if (!img.src || img.src === location.href) observer.observe(img);
+            });
         }
 
         function isChatNearBottom(container, threshold = 80) {
