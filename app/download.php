@@ -29,11 +29,15 @@ $apk_url = 'https://github.com/agichev/dump.mobile/releases/download/1.2/dump.ap
     <link rel="icon" href="<?= $base ?>/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="<?= $base ?>/logo.png">
     <link rel="manifest" href="<?= $base ?>/site.webmanifest">
+    <script>
+    (function(){try{if(localStorage.getItem('dump_no_track')==='1'){window.__dumpNoTrack=true}}catch(e){}})();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     <!-- WireBoard tag -->
     <script type="text/javascript">
+    if (!window.__dumpNoTrack) {
     ;(function(w,i,r,e,b,oar,d){if(!w[b]){w.WireBoardNamespace=w.WireBoardNamespace||[];
     w.WireBoardNamespace.push(b);w[b]=function(){(w[b].q=w[b].q||[]).push(arguments)};
     w[b].q=w[b].q||[];oar=i.createElement(r);d=i.getElementsByTagName(r)[0];oar.async=1;
@@ -48,6 +52,7 @@ $apk_url = 'https://github.com/agichev/dump.mobile/releases/download/1.2/dump.ap
     window.wireboard('enableActivityTracking', 5, 10);
     var customContext=[{schema:'wb:io.wireboard/publisher',data:{publisher:'0c66f34d-03e9-42bf-ae40-0c109f6d4aa0'}}]
     window.wireboard('trackPageView', null, customContext);
+    }
     </script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }

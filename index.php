@@ -137,6 +137,9 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
     <meta name="keywords" content="<?= htmlspecialchars($seo_keywords, ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
     <link rel="canonical" href="<?= htmlspecialchars(rtrim(app_base_url(), '/') . '/' . ltrim($_req, '/'), ENT_QUOTES | ENT_HTML5, 'UTF-8') ?>">
 
+    <script>
+    (function(){try{if(localStorage.getItem('dump_no_track')==='1'){window.__dumpNoTrack=true}}catch(e){}})();
+    </script>
     <link rel="preconnect" href="https://unpkg.com">
     <link rel="preconnect" href="https://cdnjs.cloudflare.com">
     <link rel="preconnect" href="https://www.google.com">
@@ -175,6 +178,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
     <?php endif; ?>
     <!-- WireBoard tag -->
     <script type="text/javascript">
+    if (!window.__dumpNoTrack) {
     ;(function(w,i,r,e,b,oar,d){if(!w[b]){w.WireBoardNamespace=w.WireBoardNamespace||[];
     w.WireBoardNamespace.push(b);w[b]=function(){(w[b].q=w[b].q||[]).push(arguments)};
     w[b].q=w[b].q||[];oar=i.createElement(r);d=i.getElementsByTagName(r)[0];oar.async=1;
@@ -189,6 +193,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
     window.wireboard('enableActivityTracking', 5, 10);
     var customContext=[{schema:'wb:io.wireboard/publisher',data:{publisher:'0c66f34d-03e9-42bf-ae40-0c109f6d4aa0'}}]
     window.wireboard('trackPageView', null, customContext);
+    }
     </script>
 </head>
 <body>
@@ -511,6 +516,16 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
                         </div>
                         <label class="toggle-switch">
                             <input type="checkbox" id="privacyNoAds" onchange="togglePrivacyNoAds(this)">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="flex justify-between items-center mb-4" style="background: var(--surface-elevated); border-radius: var(--radius-md); padding: 0.75rem 1rem;">
+                        <div>
+                            <div class="font-bold" style="font-size:0.95rem;">Не отслеживайте меня</div>
+                            <div class="text-xs text-muted mt-1">Отключает Microsoft Clarity, WireBoard и всю стороннюю аналитику</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="privacyNoTrack" onchange="togglePrivacyNoTrack(this)">
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
@@ -997,11 +1012,13 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
     </script>
     <?php endif; ?>
     <script>
+    if (!window.__dumpNoTrack) {
         (function(c,l,a,r,i,t,y){
             c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
             t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
             y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
         })(window, document, "clarity", "script", "xj975d6qmr");
+    }
     </script>
     <audio id="notifAudio" preload="auto" src="<?= htmlspecialchars($asset_base) ?>/notification.wav" volume="0.5"></audio>
 </body>

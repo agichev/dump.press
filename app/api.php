@@ -1556,6 +1556,7 @@ try {
             $messages = isset($_POST['privacy_messages']) ? (int)(bool)$_POST['privacy_messages'] : null;
             $beta = isset($_POST['privacy_beta']) ? (int)(bool)$_POST['privacy_beta'] : null;
             $no_ads = isset($_POST['privacy_no_ads']) ? (int)(bool)$_POST['privacy_no_ads'] : null;
+            $no_track = isset($_POST['privacy_no_track']) ? (int)(bool)$_POST['privacy_no_track'] : null;
 
             $updates = [];
             $params = [];
@@ -1574,6 +1575,10 @@ try {
             if ($no_ads !== null) {
                 $updates[] = 'privacy_no_ads = ?';
                 $params[] = $no_ads;
+            }
+            if ($no_track !== null) {
+                $updates[] = 'privacy_no_track = ?';
+                $params[] = $no_track;
             }
 
             if (!empty($updates)) {
@@ -1607,7 +1612,7 @@ try {
 
         case 'check_privacy':
             requireAuth();
-            $stmt = $pdo->prepare("SELECT privacy_searchable, privacy_messages, privacy_beta, privacy_no_ads FROM users WHERE id = ?");
+            $stmt = $pdo->prepare("SELECT privacy_searchable, privacy_messages, privacy_beta, privacy_no_ads, privacy_no_track FROM users WHERE id = ?");
             $stmt->execute([$current_session['user_id']]);
             $privacy = $stmt->fetch();
             echo json_encode(['success' => true, 'privacy' => $privacy]);

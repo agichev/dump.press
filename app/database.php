@@ -125,6 +125,7 @@ try {
     try { $pdo->exec("ALTER TABLE users ADD COLUMN privacy_beta TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE users ADD COLUMN captcha_required TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE users ADD COLUMN privacy_no_ads TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {}
+    try { $pdo->exec("ALTER TABLE users ADD COLUMN privacy_no_track TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE users ADD COLUMN email_verified TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE users ADD COLUMN pending_email VARCHAR(255) NULL"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE sessions ADD COLUMN ws_token VARCHAR(128) NULL"); } catch (PDOException $e) {}
