@@ -1843,7 +1843,7 @@
 
                 container.innerHTML = `
                     <div class="profile-header smooth-fade-in">
-                        <img src="${avatarUrl}" class="profile-avatar">
+                        <img src="${avatarUrl}" class="profile-avatar" style="cursor:pointer;" onclick="viewChatImage(this.src)" title="Открыть фото">
                         <div class="w-full">
                             <h2 class="font-bold" style="font-size:1.4rem;">@${p.username}</h2>
                             <div class="profile-bio" style="margin: 6px 0 10px; font-size: 0.95rem; line-height: 1.5; word-break: break-word;">${formatBio(p.bio) || 'Нет информации.'}</div>

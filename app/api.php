@@ -1482,7 +1482,7 @@ try {
                     (SELECT m.created_at FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message_at,
                     (SELECT m.sender_id FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_sender_id,
                     (SELECT COUNT(*) FROM message_status ms JOIN messages m ON ms.message_id = m.id WHERE m.conversation_id = c.id AND ms.user_id = ? AND ms.status IN ('sent','delivered')) as unread_count,
-                    cp.last_read_at, cp.muted
+                    cp.last_read_at, cp.muted, cp.custom_name
                 FROM conversations c
                 JOIN conversation_participants cp ON c.id = cp.conversation_id AND cp.user_id = ?
                 WHERE cp.is_deleted = 0
