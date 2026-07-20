@@ -191,7 +191,17 @@ async function getConversations(db, userId) {
        WHERE cp.conversation_id = ? AND cp.user_id != ?`,
       [conv.id, userId]
     );
-    conv.participants = participants;
+
+    if (participants.length === 0) {
+      conv.is_self_chat = true;
+      conv.participants = [{
+        id: -1,
+        username: 'Избранное',
+        avatar_url: '',
+      }];
+    } else {
+      conv.participants = participants;
+    }
   }
 
   return rows;
@@ -245,6 +255,31 @@ async function getMessages(db, conversationId, userId, before = null, limit = 50
 }
 
 async function getOrCreateConversation(db, userId1, userId2) {
+  const isSelfChat = userId1 === userId2;
+
+  if (isSelfChat) {
+    const [existing] = await db.execute(
+      `SELECT c.id FROM conversations c
+       JOIN conversation_participants cp ON c.id = cp.conversation_id AND cp.user_id = ?
+       WHERE (SELECT COUNT(*) FROM conversation_participants WHERE conversation_id = c.id) = 1`,
+      [userId1]
+    );
+    if (existing.length > 0) {
+      await db.execute(
+        'UPDATE conversation_participants SET is_deleted = 0 WHERE conversation_id = ? AND user_id = ?',
+        [existing[0].id, userId1]
+      );
+      return existing[0].id;
+    }
+    const [result] = await db.execute('INSERT INTO conversations () VALUES ()');
+    const convId = result.insertId;
+    await db.execute(
+      'INSERT INTO conversation_participants (conversation_id, user_id) VALUES (?, ?)',
+      [convId, userId1]
+    );
+    return convId;
+  }
+
   const [existing] = await db.execute(
     `SELECT c.id FROM conversations c
      JOIN conversation_participants cp1 ON c.id = cp1.conversation_id AND cp1.user_id = ?
@@ -534,6 +569,15 @@ wss.on('connection', (ws, req) => {
         }
 
         case 'get_or_create_conv': {
+          const isSelfChat = msg.user_id === user.id;
+
+          if (isSelfChat) {
+            const convId = await getOrCreateConversation(db, user.id, user.id);
+            const messages = await getMessages(db, convId, user.id);
+            send({ type: 'conversation_created', conversation_id: convId, messages, partner: { id: -1, username: 'Избранное', avatar_url: '' } });
+            break;
+          }
+
           const [targetUser] = await db.execute(
             'SELECT id, username, avatar_url, privacy_messages FROM users WHERE id = ?',
             [msg.user_id]

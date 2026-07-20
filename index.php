@@ -209,6 +209,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
 
         const getProxyUrl = (url) => {
             if (!url) return '';
+            if (url.startsWith('data:')) return url;
             if (url.includes('/index.php?api=proxy')) return url;
             try { return BASE_PATH + '/index.php?api=proxy&url=' + encodeURIComponent(btoa(url)); }
             catch(e) { return url; }

@@ -1499,6 +1499,16 @@ try {
                 ");
                 $stmt2->execute([$conv['id'], $current_session['user_id']]);
                 $conv['participants'] = $stmt2->fetchAll();
+
+                if (empty($conv['participants'])) {
+                    $conv['is_self_chat'] = true;
+                    $conv['participants'] = [[
+                        'id' => -1,
+                        'username' => 'Избранное',
+                        'avatar_url' => '',
+                    ]];
+                }
+
                 foreach ($conv['participants'] as &$p) {
                     $p['username'] = htmlspecialchars($p['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
                     $p['avatar_url'] = htmlspecialchars($p['avatar_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -1756,7 +1766,29 @@ try {
         case 'conversation_create':
             requireAuth();
             $target_id = (int)($_POST['user_id'] ?? 0);
-            if ($target_id === (int)$current_session['user_id']) throw new Exception('Нельзя создать чат с собой');
+            $is_self_chat = ($target_id === (int)$current_session['user_id']);
+
+            if ($is_self_chat) {
+                $stmt = $pdo->prepare("
+                    SELECT c.id FROM conversations c
+                    JOIN conversation_participants cp ON c.id = cp.conversation_id AND cp.user_id = ?
+                    WHERE (SELECT COUNT(*) FROM conversation_participants WHERE conversation_id = c.id) = 1
+                ");
+                $stmt->execute([$current_session['user_id']]);
+                $existing = $stmt->fetch();
+                if ($existing) {
+                    $pdo->prepare("UPDATE conversation_participants SET is_deleted = 0 WHERE conversation_id = ? AND user_id = ?")
+                        ->execute([$existing['id'], $current_session['user_id']]);
+                    echo json_encode(['success' => true, 'conversation_id' => (int)$existing['id'], 'existing' => true]);
+                    break;
+                }
+                $pdo->prepare("INSERT INTO conversations () VALUES ()")->execute();
+                $conv_id = (int)$pdo->lastInsertId();
+                $pdo->prepare("INSERT INTO conversation_participants (conversation_id, user_id) VALUES (?, ?)")
+                    ->execute([$conv_id, $current_session['user_id']]);
+                echo json_encode(['success' => true, 'conversation_id' => $conv_id, 'existing' => false]);
+                break;
+            }
 
             $stmt = $pdo->prepare("SELECT privacy_messages FROM users WHERE id = ?");
             $stmt->execute([$target_id]);

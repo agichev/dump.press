@@ -3042,6 +3042,7 @@
         let isTyping = false;
         let msgBadgeCount = 0;
         let messengerInitialized = false;
+        const SELF_CHAT_AVATAR = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="#000"/><path d="M50 15 L61 38 L90 38 L67 55 L78 82 L50 65 L22 82 L33 55 L10 38 L39 38Z" fill="#fff"/></svg>')}`;
         let activeConvUsers = {};
         let pendingNewChatTimeout = null;
 
@@ -3200,11 +3201,37 @@
                         if (!messengerMessages[currentConvId]) messengerMessages[currentConvId] = [];
                         const existingIdx = messengerMessages[currentConvId].findIndex(m => m.id === msg.id);
                         if (existingIdx === -1) {
+                            let tempDomId = null;
                             if (msg.sender_id == currentUser.id) {
                                 const tempIdx = messengerMessages[currentConvId].findIndex(m => m.id < 0 && m.content === msg.content);
-                                if (tempIdx !== -1) messengerMessages[currentConvId].splice(tempIdx, 1);
+                                if (tempIdx !== -1) {
+                                    tempDomId = messengerMessages[currentConvId][tempIdx].id;
+                                    messengerMessages[currentConvId].splice(tempIdx, 1);
+                                }
                             }
                             messengerMessages[currentConvId].push(msg);
+                            if (tempDomId !== null) {
+                                const tempEl = document.getElementById('msg-' + tempDomId);
+                                if (tempEl) {
+                                    tempEl.id = 'msg-' + msg.id;
+                                    const bubble = tempEl.querySelector('.msg-bubble');
+                                    if (bubble) {
+                                        bubble.setAttribute('onclick', `showMsgActions(${msg.id}, event)`);
+                                        bubble.setAttribute('oncontextmenu', `event.preventDefault(); showMsgActions(${msg.id}, event);`);
+                                    }
+                                    const statusEl = tempEl.querySelector('.msg-status');
+                                    if (statusEl) {
+                                        let statusSvg = `<svg class="msg-status" width="14" height="9" viewBox="0 0 16 10"><path d="M1 5l3 3 5-6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+                                        if (msg.my_status === 'read') {
+                                            statusSvg = `<svg class="msg-status msg-status-read" width="14" height="9" viewBox="0 0 16 10"><path d="M1 5l3 3 5-6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 5l3 3 5-6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+                                        } else if (msg.my_status === 'delivered') {
+                                            statusSvg = `<svg class="msg-status msg-status-delivered" width="14" height="9" viewBox="0 0 16 10"><path d="M1 5l3 3 5-6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 5l3 3 5-6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+                                        }
+                                        statusEl.outerHTML = statusSvg;
+                                    }
+                                    break;
+                                }
+                            }
                             renderMessages();
                         }
                         if (msg.sender_id != currentUser.id) {
@@ -3554,7 +3581,7 @@
                 if (!partner) return '';
                 const blocked = isUserBlocked(partner.id);
                 const muted = !!conv.muted;
-                const avatar = getProxyUrl(partner.avatar_url || `https://ui-avatars.com/api/?name=${partner.username}&background=random`);
+                const avatar = conv.is_self_chat ? SELF_CHAT_AVATAR : getProxyUrl(partner.avatar_url || `https://ui-avatars.com/api/?name=${partner.username}&background=random`);
                 const lastMsg = conv.last_message || '';
                 const isMe = conv.last_sender_id == currentUser.id;
                 const unread = parseInt(conv.unread_count) || 0;
@@ -3625,7 +3652,7 @@
                 return;
             }
 
-            const avatar = getProxyUrl(currentConvPartner.avatar_url || `https://ui-avatars.com/api/?name=${currentConvPartner.username}&background=random`);
+            const avatar = conv.is_self_chat ? SELF_CHAT_AVATAR : getProxyUrl(currentConvPartner.avatar_url || `https://ui-avatars.com/api/?name=${currentConvPartner.username}&background=random`);
             const isBlocked = isUserBlocked(currentConvPartner.id);
 
             document.getElementById('convListSection').classList.add('hidden');
@@ -4658,7 +4685,7 @@
             const tempId = -Date.now();
             if (currentConvId) {
                 if (!messengerMessages[currentConvId]) messengerMessages[currentConvId] = [];
-                messengerMessages[currentConvId].push({
+                const tempMsg = {
                     id: tempId,
                     sender_id: currentUser.id,
                     content,
@@ -4666,8 +4693,34 @@
                     created_at: new Date().toISOString(),
                     username: currentUser.username,
                     avatar_url: currentUser.avatar_url,
-                });
-                renderMessages();
+                };
+                messengerMessages[currentConvId].push(tempMsg);
+                const container = document.getElementById('chatMessagesInner');
+                const emptyState = container.querySelector('.empty-state');
+                if (emptyState) emptyState.remove();
+                const msgs = messengerMessages[currentConvId];
+                const prevMsg = msgs.length > 1 ? msgs[msgs.length - 2] : null;
+                const msgDate = parseDateStr(tempMsg.created_at);
+                const prevDate = prevMsg ? parseDateStr(prevMsg.created_at) : null;
+                const needDateDivider = !prevDate || messageDateKey(msgDate) !== messageDateKey(prevDate);
+                const isGrouped = prevMsg && prevMsg.sender_id == currentUser.id;
+                let sendHtml = '';
+                if (needDateDivider) {
+                    sendHtml += `<div class="msg-date-divider" role="separator"><span>${messageDateLabel(msgDate)}</span></div>`;
+                }
+                sendHtml += `<div class="msg-row msg-row-me" id="msg-${tempId}">
+                    <div class="msg-content msg-content-me ${isGrouped ? 'msg-continue' : ''}">
+                        <div class="msg-bubble" onclick="showMsgActions(${tempId}, event)" oncontextmenu="event.preventDefault(); showMsgActions(${tempId}, event);">
+                            <div class="msg-text">${renderMsgBody(content)}</div>
+                            <div class="msg-meta">
+                                <span class="msg-time">${msgTimeShort(tempMsg.created_at)}</span>
+                                <svg class="msg-status" width="14" height="9" viewBox="0 0 16 10"><path d="M1 5l3 3 5-6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+                container.insertAdjacentHTML('beforeend', sendHtml);
+                observeChatImages();
                 scrollChatDown();
             }
 
@@ -4692,8 +4745,40 @@
                     if (data.success && data.message) {
                         if (!messengerMessages[currentConvId]) messengerMessages[currentConvId] = [];
                         const tempIdx = messengerMessages[currentConvId].findIndex(m => m.id < 0 && m.content === data.message.content);
-                        if (tempIdx !== -1) messengerMessages[currentConvId].splice(tempIdx, 1);
+                        let tempDomId = null;
+                        if (tempIdx !== -1) {
+                            tempDomId = messengerMessages[currentConvId][tempIdx].id;
+                            messengerMessages[currentConvId].splice(tempIdx, 1);
+                        }
                         messengerMessages[currentConvId].push(data.message);
+                        if (tempDomId !== null) {
+                            const tempEl = document.getElementById('msg-' + tempDomId);
+                            if (tempEl) {
+                                tempEl.id = 'msg-' + data.message.id;
+                                const bubbleEl = tempEl.querySelector('.msg-bubble');
+                                if (bubbleEl) {
+                                    bubbleEl.setAttribute('onclick', `showMsgActions(${data.message.id}, event)`);
+                                    bubbleEl.setAttribute('oncontextmenu', `event.preventDefault(); showMsgActions(${data.message.id}, event);`);
+                                }
+                                const statusEl = tempEl.querySelector('.msg-status');
+                                if (statusEl) {
+                                    let statusSvg = `<svg class="msg-status" width="14" height="9" viewBox="0 0 16 10"><path d="M1 5l3 3 5-6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+                                    if (data.message.my_status === 'read') {
+                                        statusSvg = `<svg class="msg-status msg-status-read" width="14" height="9" viewBox="0 0 16 10"><path d="M1 5l3 3 5-6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 5l3 3 5-6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+                                    } else if (data.message.my_status === 'delivered') {
+                                        statusSvg = `<svg class="msg-status msg-status-delivered" width="14" height="9" viewBox="0 0 16 10"><path d="M1 5l3 3 5-6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 5l3 3 5-6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+                                    }
+                                    statusEl.outerHTML = statusSvg;
+                                }
+                                scrollChatDown();
+                                cancelReply();
+                                input.value = '';
+                                input.style.height = 'auto';
+                                pendingAttachments = [];
+                                renderAttachmentPreviews();
+                                return;
+                            }
+                        }
                         renderMessages();
                         scrollChatDown();
                         cancelReply();
@@ -4789,6 +4874,8 @@
         };
 
         window.showMsgActions = function(msgId, event) {
+            if (event && event.type === 'click' && !isDumpApp && !/Mobi|Android/i.test(navigator.userAgent)) return;
+
             const msgs = messengerMessages[currentConvId] || [];
             const msg = msgs.find(m => m.id === msgId);
             if (!msg) return;
@@ -4853,15 +4940,23 @@
             const partner = conv.participants && conv.participants[0];
             if (!partner) return;
 
-            const blocked = isUserBlocked(partner.id);
+            const isSelfChat = !!conv.is_self_chat;
+            const blocked = isSelfChat ? false : isUserBlocked(partner.id);
             const muted = !!conv.muted;
 
             const actions = [
                 { label: 'Очистить чат', icon: 'ph-eraser', action: `clearConv(${convId})` },
                 { label: muted ? 'Включить уведомления' : 'Заглушить', icon: muted ? 'ph-bell-ringing' : 'ph-bell-slash', action: `toggleMuteConv(${convId})` },
-                { label: blocked ? 'Разблокировать' : 'Заблокировать', icon: 'ph-prohibit', action: `toggleBlockUser(${convId}, ${partner.id}, '${partner.username.replace(/'/g, "\\'")}')`, danger: !blocked },
-                { label: 'Удалить чат', icon: 'ph-trash', action: `leaveConv(${convId})`, danger: true },
             ];
+
+            if (!isSelfChat) {
+                actions.push(
+                    { label: blocked ? 'Разблокировать' : 'Заблокировать', icon: 'ph-prohibit', action: `toggleBlockUser(${convId}, ${partner.id}, '${partner.username.replace(/'/g, "\\'")}')`, danger: !blocked },
+                );
+            }
+            actions.push(
+                { label: 'Удалить чат', icon: 'ph-trash', action: `leaveConv(${convId})`, danger: true },
+            );
 
             if (isDumpApp || /Mobi|Android/i.test(navigator.userAgent)) {
                 showConvActionsModal(partner.username, actions);
@@ -5299,6 +5394,44 @@
             newChatSearchTimeout = setTimeout(performNewChatSearch, 400);
         }
 
+        async function openFavoritesChat() {
+            closeModal('newChatModal');
+
+            const existing = messengerConversations.find(c => c.is_self_chat);
+            if (existing) {
+                openChat(existing);
+                navigate('/messages/' + existing.id, true);
+                return;
+            }
+
+            try {
+                const fd = new FormData();
+                fd.append('user_id', currentUser.id);
+                fd.append('csrf_token', csrfToken);
+                const res = await fetch(apiCall('conversation_create'), { method: 'POST', body: fd });
+                const data = await res.json();
+                if (data.success && data.conversation_id) {
+                    const newConv = {
+                        id: data.conversation_id,
+                        is_self_chat: true,
+                        participants: [{ id: -1, username: 'Избранное', avatar_url: SELF_CHAT_AVATAR }],
+                        last_message: '',
+                        last_message_at: null,
+                        unread_count: 0,
+                    };
+                    messengerConversations.unshift(newConv);
+                    renderConvList();
+                    openChat(newConv);
+                    navigate('/messages/' + data.conversation_id, true);
+                } else {
+                    showToast(data.error || 'Ошибка');
+                }
+            } catch (e) {
+                showToast('Ошибка создания чата');
+            }
+        }
+        window.openFavoritesChat = openFavoritesChat;
+
         async function performNewChatSearch() {
             const q = document.getElementById('newChatSearch').value.trim();
             const list = document.getElementById('newChatResults');
@@ -5307,7 +5440,7 @@
             try {
                 const res = await fetch(apiCall('search') + '&q=' + encodeURIComponent(q));
                 const data = await res.json();
-                const users = (data.users || []).filter(u => u.id !== currentUser.id);
+                const users = data.users || [];
                 if (!users.length) {
                     list.innerHTML = '<div class="empty-state"><i class="ph ph-user"></i><p>Пользователи не найдены</p></div>';
                     return;
@@ -5318,7 +5451,7 @@
                     const un = (u.username || '').replace(/'/g, "\\'");
                     return `<div class="search-result-item" onclick="startNewChat(${u.id}, '${un}', '${av}')">
                         <img src="${avatar}" class="search-result-img">
-                        <div class="font-bold flex-1">${u.username}</div>
+                        <div class="font-bold flex-1">${u.username}${u.id == currentUser.id ? ' <span style=\"color:var(--text-muted);font-weight:400;font-size:0.85rem;\">(Вы)</span>' : ''}</div>
                     </div>`;
                 }).join('');
             } catch (e) {
@@ -5328,6 +5461,11 @@
 
         async function startNewChat(userId, username, avatarUrl) {
             closeModal('newChatModal');
+
+            if (userId === currentUser.id) {
+                openFavoritesChat();
+                return;
+            }
 
             if (isUserBlocked(userId)) {
                 showToast('Пользователь заблокирован');

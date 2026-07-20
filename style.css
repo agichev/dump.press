@@ -773,6 +773,7 @@
             border-radius: 4px 16px 16px 16px;
             position: relative; cursor: pointer;
             transition: background 0.2s ease;
+            overflow: hidden;
         }
 
         .msg-bubble:hover { background: var(--surface-hover); }
@@ -891,7 +892,7 @@
             border: 1px solid transparent; color: var(--text-main);
             outline: none; font-size: 0.95rem;
             padding: 9px 16px; border-radius: var(--radius-md); resize: none;
-            max-height: 120px; min-height: 38px; overflow-y: hidden;
+            max-height: 120px; min-height: 38px; overflow-y: auto;
             font-family: var(--font-family); line-height: 1.35;
             transition: background 0.2s;
         }
@@ -1110,7 +1111,8 @@
         .msg-audio-widget.dump-file-expired,
         .msg-file-widget.dump-file-expired {
             width: min(320px, 80vw);
-            min-width: 210px;
+            max-width: 100%;
+            min-width: 180px;
             min-height: 68px;
             max-height: none;
             padding: 12px;
@@ -1118,6 +1120,7 @@
             border-radius: var(--radius-md);
             background: var(--surface-elevated);
             overflow: hidden;
+            box-sizing: border-box;
         }
         .dump-file-expired-content {
             display: flex;
@@ -1638,8 +1641,10 @@
             .emoji-picker { max-height: 170px; }
             .context-menu { min-width: 200px; }
             .dump-player { width: 100%; max-width: 100%; }
+            .dump-player.dump-file-expired { width: 100%; max-width: 100%; }
             .msg-audio-widget { max-width: 72vw; min-width: 180px; }
             .msg-file-widget { width: 72vw; min-width: 180px; }
+            .msg-file-widget.dump-file-expired { width: 100%; max-width: 100%; }
         }
 
         @media (max-width: 480px) {
