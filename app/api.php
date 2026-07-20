@@ -1930,6 +1930,16 @@ try {
             echo json_encode(['success' => true]);
             break;
 
+        case 'rename_conversation':
+            requireAuth();
+            $conv_id = (int)($_POST['conversation_id'] ?? 0);
+            $name = trim($_POST['name'] ?? '');
+            if ($name !== '' && mb_strlen($name) > 100) throw new Exception('Слишком длинное имя');
+            $pdo->prepare("UPDATE conversation_participants SET custom_name = ? WHERE conversation_id = ? AND user_id = ?")
+                ->execute([$name ?: null, $conv_id, $current_session['user_id']]);
+            echo json_encode(['success' => true, 'custom_name' => $name ?: null]);
+            break;
+
         /* ---------------- SITEMAP / ROBOTS ---------------- */
         case 'sitemap':
             require_once __DIR__ . '/lib/sitemap.php';

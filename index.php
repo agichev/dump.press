@@ -832,6 +832,20 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
         </div>
     </div>
 
+    <div id="renameConvModal" class="modal-overlay" style="z-index: 10000;" onclick="closeModalOnOutsideClick(event, 'renameConvModal')">
+        <div class="modal-content" style="max-width: 360px;">
+            <h3 class="font-bold mb-4" style="font-size:1.1rem;">Переименовать чат</h3>
+            <div class="input-group mb-4">
+                <input type="text" id="renameConvInput" class="vc-input" maxlength="100" placeholder=" " onkeydown="if(event.key==='Enter'){event.preventDefault();renameConv();}">
+                <label for="renameConvInput" class="vc-label">Новое имя</label>
+            </div>
+            <div class="flex gap-3">
+                <button class="vc-btn-outline flex-1" style="padding: 12px;" onclick="closeModal('renameConvModal')">Отмена</button>
+                <button class="vc-btn flex-1" id="renameConvSaveBtn" style="padding: 12px;" onclick="renameConv()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
     <div id="bottomNav" class="bottom-nav">
         <button class="bottom-nav-item active" data-nav="feed" onclick="bottomNavClick('feed')">
             <i class="ph ph-house"></i>

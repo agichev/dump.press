@@ -170,13 +170,13 @@ async function markRead(db, conversationId, userId) {
 
 async function getConversations(db, userId) {
   const [rows] = await db.execute(
-    `SELECT c.id,
-            (SELECT m.content FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message,
-            (SELECT m.created_at FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message_at,
-            (SELECT m.sender_id FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_sender_id,
-            (SELECT COUNT(*) FROM message_status ms JOIN messages m ON ms.message_id = m.id WHERE m.conversation_id = c.id AND ms.user_id = ? AND ms.status IN ('sent','delivered')) as unread_count,
-            cp.last_read_at, cp.muted
-     FROM conversations c
+      `SELECT c.id,
+             (SELECT m.content FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message,
+             (SELECT m.created_at FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message_at,
+             (SELECT m.sender_id FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_sender_id,
+             (SELECT COUNT(*) FROM message_status ms JOIN messages m ON ms.message_id = m.id WHERE m.conversation_id = c.id AND ms.user_id = ? AND ms.status IN ('sent','delivered')) as unread_count,
+             cp.last_read_at, cp.muted, cp.custom_name
+      FROM conversations c
      JOIN conversation_participants cp ON c.id = cp.conversation_id AND cp.user_id = ?
      WHERE cp.is_deleted = 0
      ORDER BY c.updated_at DESC`,
@@ -701,6 +701,22 @@ wss.on('connection', (ws, req) => {
             'UPDATE conversation_participants SET muted = 0 WHERE conversation_id = ? AND user_id = ?',
             [msg.conversation_id, user.id]
           );
+          break;
+        }
+
+        case 'rename_conversation': {
+          if (!await isConversationParticipant(db, msg.conversation_id, user.id)) {
+            return send({ type: 'error', error: 'Доступ запрещен' });
+          }
+          const newName = (msg.name || '').trim();
+          if (newName.length > 100) {
+            return send({ type: 'error', error: 'Слишком длинное имя' });
+          }
+          await db.execute(
+            'UPDATE conversation_participants SET custom_name = ? WHERE conversation_id = ? AND user_id = ?',
+            [newName || null, msg.conversation_id, user.id]
+          );
+          send({ type: 'conversation_renamed', conversation_id: msg.conversation_id, custom_name: newName || null });
           break;
         }
 

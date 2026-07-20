@@ -638,7 +638,7 @@
             if (e.key === 'Escape') {
                 const legal = document.getElementById('legalModal');
                 if (legal && legal.classList.contains('open')) { closeLegal(); return; }
-                ['postOptionsModal', 'commentsModal', 'settingsModal', 'cropModal', 'searchModal', 'passwordModal', 'confirmModal', 'textWarningModal', 'tfaSettingsModal', 'tfaLoginModal', 'turnstileModal', 'followingModal', 'newChatModal', 'emojiPicker'].filter(id => id !== 'spamCaptchaModal').forEach(id => {
+                ['postOptionsModal', 'commentsModal', 'settingsModal', 'cropModal', 'searchModal', 'passwordModal', 'confirmModal', 'textWarningModal', 'tfaSettingsModal', 'tfaLoginModal', 'turnstileModal', 'followingModal', 'newChatModal', 'renameConvModal', 'emojiPicker'].filter(id => id !== 'spamCaptchaModal').forEach(id => {
                     const m = document.getElementById(id);
                     if(m && m.classList.contains('open')) closeModal(id);
                 });
@@ -3166,6 +3166,19 @@
                     break;
                 }
 
+                case 'conversation_renamed': {
+                    const conv = messengerConversations.find(c => c.id === data.conversation_id);
+                    if (conv) {
+                        conv.custom_name = data.custom_name;
+                        renderConvList();
+                        if (currentConvId === data.conversation_id) {
+                            const partner = conv.participants && conv.participants[0];
+                            document.getElementById('chatPartnerName').textContent = data.custom_name || (partner ? partner.username : '');
+                        }
+                    }
+                    break;
+                }
+
                 case 'new_message': {
                     const msg = data.message;
                     let idx = messengerConversations.findIndex(c => c.id == msg.conversation_id);
@@ -3590,13 +3603,14 @@
                 const preview = getConversationPreview(lastMsg);
                 const blockStyle = blocked ? 'style="filter:grayscale(100%);opacity:0.5;"' : '';
                 const nameStyle = blocked ? 'style="color:var(--text-muted);"' : '';
+                const displayName = conv.custom_name || partner.username;
                 return `<div class="conv-item ${blocked ? 'conv-blocked' : ''}" onclick="openConv(${conv.id})" oncontextmenu="event.preventDefault(); showConvContextMenu(${conv.id}, event)">
                     <div style="position:relative;flex-shrink:0;">
                         <img src="${avatar}" class="conv-avatar" loading="lazy" ${blockStyle}>
                     </div>
                     <div class="conv-info">
                         <div class="conv-top">
-                            <span class="conv-name" ${nameStyle}>${partner.username}${blocked ? ' (заблок.)' : ''}</span>
+                            <span class="conv-name" ${nameStyle}>${displayName}${blocked ? ' (заблок.)' : ''}${conv.custom_name ? `<span style="font-weight:400;color:var(--text-muted);font-size:0.75rem;"> (${partner.username})</span>` : ''}</span>
                             <span class="conv-time">${muted ? '<i class="ph ph-bell-slash" style="font-size:0.7rem;margin-right:2px;"></i>' : ''}${time}</span>
                         </div>
                         <div class="conv-bottom">
@@ -3659,7 +3673,10 @@
             document.getElementById('chatSection').classList.remove('hidden');
             document.getElementById('chatPartnerAvatar').src = avatar;
             document.getElementById('chatPartnerAvatar').style.filter = isBlocked ? 'grayscale(100%)' : '';
-            document.getElementById('chatPartnerName').textContent = isBlocked ? currentConvPartner.username + ' (заблокирован)' : currentConvPartner.username;
+            const displayName = isBlocked
+                ? (conv.custom_name || currentConvPartner.username) + ' (заблокирован)'
+                : (conv.custom_name || currentConvPartner.username);
+            document.getElementById('chatPartnerName').textContent = displayName;
             document.getElementById('chatPartnerName').style.color = isBlocked ? 'var(--text-muted)' : '';
             document.getElementById('typingIndicator').classList.add('hidden');
 
@@ -4947,6 +4964,7 @@
             const actions = [
                 { label: 'Очистить чат', icon: 'ph-eraser', action: `clearConv(${convId})` },
                 { label: muted ? 'Включить уведомления' : 'Заглушить', icon: muted ? 'ph-bell-ringing' : 'ph-bell-slash', action: `toggleMuteConv(${convId})` },
+                { label: 'Переименовать', icon: 'ph-pencil', action: `showRenameConvModal(${convId})` },
             ];
 
             if (!isSelfChat) {
@@ -5002,6 +5020,47 @@
             document.body.appendChild(overlay);
             overlay.classList.add('open');
         }
+
+        let renameConvTargetId = null;
+
+        window.showRenameConvModal = function(convId) {
+            renameConvTargetId = convId;
+            const conv = messengerConversations.find(c => c.id === convId);
+            const currentName = conv ? (conv.custom_name || '') : '';
+            document.getElementById('renameConvInput').value = currentName;
+            openModal('renameConvModal', 'renameConvInput');
+        };
+
+        window.renameConv = function() {
+            const convId = renameConvTargetId;
+            if (!convId) return;
+            const name = document.getElementById('renameConvInput').value.trim();
+            if (name.length > 100) { showToast('Слишком длинное имя'); return; }
+
+            closeModal('renameConvModal');
+
+            if (wsConnected) {
+                ws.send(JSON.stringify({ type: 'rename_conversation', conversation_id: convId, name }));
+            } else {
+                fetch(apiCall('rename_conversation'), {
+                    method: 'POST',
+                    body: 'csrf_token=' + encodeURIComponent(csrfToken) + '&conversation_id=' + convId + '&name=' + encodeURIComponent(name),
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                }).then(r => r.json()).then(data => {
+                    if (data.success) {
+                        const conv = messengerConversations.find(c => c.id === convId);
+                        if (conv) {
+                            conv.custom_name = data.custom_name;
+                            renderConvList();
+                            if (currentConvId === convId) {
+                                const partner = conv.participants && conv.participants[0];
+                                document.getElementById('chatPartnerName').textContent = data.custom_name || (partner ? partner.username : '');
+                            }
+                        }
+                    }
+                });
+            }
+        };
 
         window.leaveConv = function(convId) {
             showConfirm('Удаление', 'Удалить этот чат?', () => {

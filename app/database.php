@@ -275,6 +275,7 @@ try {
     ");
 
     try { $pdo->exec("ALTER TABLE conversation_participants ADD COLUMN muted TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {}
+    try { $pdo->exec("ALTER TABLE conversation_participants ADD COLUMN custom_name VARCHAR(255) DEFAULT NULL"); } catch (PDOException $e) {}
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS uploaded_files (
