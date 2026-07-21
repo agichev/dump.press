@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-function sendFcmPush($pdo, $userId, $fromUserId, $type, $postId, $postSlug): void {
+function sendFcmPush($pdo, $userId, $fromUserId, $type, $postId = null, $postSlug = null, $conversationId = null): void {
     $saJson = $GLOBALS['FIREBASE_SERVICE_ACCOUNT'] ?? '';
     if (!$saJson) return;
 
@@ -24,6 +24,7 @@ function sendFcmPush($pdo, $userId, $fromUserId, $type, $postId, $postSlug): voi
         case 'new_post': $body = "$username опубликовал(а) новый пост"; break;
         case 'mention':  $body = "$username упомянул(а) вас в публикации"; break;
         case 'login':    $body = "Выполнен вход в ваш аккаунт"; break;
+        case 'message':  $body = "Новое сообщение от $username"; break;
     }
 
     $stmt = $pdo->prepare("SELECT token FROM fcm_tokens WHERE user_id = ?");
@@ -39,23 +40,30 @@ function sendFcmPush($pdo, $userId, $fromUserId, $type, $postId, $postSlug): voi
     $url = "https://fcm.googleapis.com/v1/projects/$projectId/messages:send";
 
     foreach ($tokens as $token) {
+        $data = [
+            'type'            => $type,
+            'from_user_id'    => (string)$fromUserId,
+            'from_username'   => $username,
+            'post_id'         => (string)$postId,
+            'post_slug'       => (string)$postSlug,
+            'conversation_id' => (string)($conversationId ?? ''),
+            'body'            => $body,
+        ];
+
         $payload = [
             'message' => [
                 'token' => $token,
-                'notification' => [
-                    'title' => 'Dump',
-                    'body'  => $body,
-                ],
-                'data' => [
-                    'type'          => $type,
-                    'from_user_id'  => (string)$fromUserId,
-                    'from_username' => $username,
-                    'post_id'       => (string)$postId,
-                    'post_slug'     => (string)$postSlug,
-                ],
+                'data' => $data,
                 'android' => ['priority' => 'HIGH'],
             ],
         ];
+
+        if ($type !== 'message') {
+            $payload['message']['notification'] = [
+                'title' => 'Dump',
+                'body'  => $body,
+            ];
+        }
 
         $ch = curl_init();
         curl_setopt_array($ch, [

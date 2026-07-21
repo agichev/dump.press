@@ -3,6 +3,7 @@ const mysql = require('mysql2/promise');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 
 const WS_PORT = process.env.WS_PORT || 9090;
 const DB_CONFIG = {
@@ -415,6 +416,27 @@ async function processPendingForUser(db, userId) {
   await db.execute('DELETE FROM pending_messages WHERE id IN (' + ids.join(',') + ')');
 }
 
+function notifyMessageFcm(conversationId, senderId, recipientId) {
+  const postData = `conversation_id=${conversationId}&sender_id=${senderId}&recipient_id=${recipientId}&_secret=dump_ws_push_2026`;
+  const options = {
+    hostname: 'www.dump.press',
+    port: 443,
+    path: '/index.php?api=internal_notify_message',
+    method: 'POST',
+    rejectUnauthorized: false,
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Content-Length': Buffer.byteLength(postData),
+    },
+    timeout: 5000,
+  };
+  const req = https.request(options, () => {});
+  req.on('error', () => {});
+  req.on('timeout', () => { req.destroy(); });
+  req.write(postData);
+  req.end();
+}
+
 const wss = new WebSocketServer({ port: WS_PORT, host: '127.0.0.1' });
 
 console.log(`WS server running on port ${WS_PORT}`);
@@ -508,6 +530,7 @@ wss.on('connection', (ws, req) => {
               await markDelivered(db, stored.id, p.user_id);
               anyDelivered = true;
             }
+            notifyMessageFcm(convId, user.id, p.user_id);
           }
           if (anyDelivered) {
             send({ type: 'status_update', conversation_id: convId, message_id: stored.id, status: 'delivered' });

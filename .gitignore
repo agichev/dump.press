@@ -3,6 +3,8 @@
 .env.local
 .env.*.local
 
+AGENTS.md
+
 # Зависимости
 /vendor/
 /node_modules/

@@ -114,8 +114,6 @@ try {
 $asset_base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
 
 $is_dump_app = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
-$ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
-$is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i', $ua);
 ?>
 <!DOCTYPE html>
 <html lang="ru">
@@ -151,7 +149,9 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%23000000'/><text x='50' y='55' dominant-baseline='middle' text-anchor='middle' font-size='76' font-family='-apple-system, BlinkMacSystemFont, sans-serif' font-weight='800' fill='%23ffffff'>D</text></svg>">
     <link rel="icon" href="<?= htmlspecialchars($asset_base) ?>/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="<?= htmlspecialchars($asset_base) ?>/logo.png">
+    <?php if (!$is_dump_app): ?>
     <link rel="manifest" href="<?= htmlspecialchars($asset_base) ?>/site.webmanifest">
+    <?php endif; ?>
     <meta name="theme-color" content="#000000">
     <meta name="msapplication-TileColor" content="#000000">
     <meta name="msapplication-TileImage" content="<?= htmlspecialchars($asset_base) ?>/favicon.ico">
@@ -159,9 +159,9 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css">
 
-    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=57" as="style">
-    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/script.js?v=57" as="script">
-    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=57">
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=58" as="style">
+    <link rel="preload" href="<?= htmlspecialchars($asset_base) ?>/script.js?v=58" as="script">
+    <link rel="stylesheet" href="<?= htmlspecialchars($asset_base) ?>/style.css?v=58">
 
     <?php if ($recaptcha_enabled): ?>
     <style>.grecaptcha-badge{visibility:hidden!important;opacity:0!important}</style>
@@ -174,7 +174,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
     <?= $seo_jsonld ?>
     <?php endif; ?>
     <?php if ($is_dump_app): ?>
-    <style>.bottom-nav{display:flex!important}#mainNav .icon-btn{display:none!important}#navBackBtn{display:flex!important}#mainNav.show-notif-btn #navNotifBtn{display:flex!important}.post-wrapper{max-width:100%!important;width:100%!important;border-radius:0!important}body{padding-bottom:56px!important}</style>
+    <style>#mainNav .icon-btn{display:none!important}#navBackBtn{display:flex!important}#mainNav.show-notif-btn #navNotifBtn{display:flex!important}.post-wrapper{max-width:100%!important;width:100%!important;border-radius:0!important}</style>
     <?php endif; ?>
     <!-- WireBoard tag -->
     <script type="text/javascript">
@@ -196,7 +196,7 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
     }
     </script>
 </head>
-<body>
+<body class="<?= $is_dump_app ? 'dump-app' : '' ?>">
     <script>
         const BASE_PATH = '<?php echo rtrim(dirname($_SERVER["SCRIPT_NAME"]), "\\/"); ?>';
         const apiCall = (action) => BASE_PATH + '/index.php?api=' + action;
@@ -903,9 +903,8 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
             </form>
         </div>
     </div>
-    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=57"></script>
+    <script src="<?= htmlspecialchars($asset_base) ?>/script.js?v=58"></script>
 
-    <?php if ($is_mobile): ?>
     <style>
         #installModal {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh;
@@ -1003,12 +1002,19 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
     </div>
     <script>
     (function() {
-        if (!localStorage.getItem('dump_install_dismissed')) {
-            setTimeout(function() {
-                var m = document.getElementById('installModal');
-                if (m) m.classList.add('open');
-            }, 2000);
+        function isMobileDevice() {
+            var ua = navigator.userAgent || '';
+            if (ua.indexOf('DumpApp') !== -1) return false;
+            if (/Windows NT|CrOS|Mac OS X.*Intel|Macintosh; Intel|Linux x86_64|Linux i686|X11/i.test(ua)) return false;
+            if (/Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini|Mobi|Mobile/i.test(ua)) return true;
+            return false;
         }
+        if (!isMobileDevice()) return;
+        if (localStorage.getItem('dump_install_dismissed')) return;
+        setTimeout(function() {
+            var m = document.getElementById('installModal');
+            if (m) m.classList.add('open');
+        }, 2000);
     })();
     function dismissInstallModal() {
         var m = document.getElementById('installModal');
@@ -1018,7 +1024,6 @@ $is_mobile = !$is_dump_app && preg_match('/Android.*Mobile|iPhone|iPad|iPod|webO
         }
     }
     </script>
-    <?php endif; ?>
     <script>
     if (!window.__dumpNoTrack) {
         (function(c,l,a,r,i,t,y){

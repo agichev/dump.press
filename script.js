@@ -51,6 +51,10 @@
         // Mobile app detection - check for DumpApp in user agent
         const isDumpApp = navigator.userAgent.includes('DumpApp');
 
+        if (isDumpApp) {
+            window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); });
+        }
+
         let fcmRegistered = false;
         let fcmPollInterval = null;
 
@@ -433,6 +437,8 @@
         }
 
         const handleRoute = () => {
+            document.body.classList.remove('chat-open');
+
             let path = window.location.pathname;
             if (BASE_PATH && path.startsWith(BASE_PATH)) path = path.substring(BASE_PATH.length);
             if (!path) path = '/';
@@ -1327,6 +1333,9 @@
                 csrfToken = data.csrf || '';
                 currentUser = data.user || null;
                 captchaRequired = currentUser && currentUser.captcha_required ? true : false;
+                if (isDumpApp && typeof Android !== 'undefined' && Android.storeCsrfToken) {
+                    Android.storeCsrfToken(csrfToken);
+                }
             } catch (e) { showToast('Не удалось связаться с сервером'); } 
             finally {
                 handleRoute();
@@ -3499,6 +3508,14 @@
             });
         }
 
+        function setChatOpen(isOpen) {
+            if (isOpen) {
+                document.body.classList.add('chat-open');
+            } else {
+                document.body.classList.remove('chat-open');
+            }
+        }
+
         async function openMessenger(openConvId = null) {
             if (!currentUser) return;
             messengerInitialized = true;
@@ -3508,9 +3525,11 @@
             if (hasImmediateConv) {
                 document.getElementById('convListSection').classList.add('hidden');
                 document.getElementById('chatSection').classList.remove('hidden');
+                setChatOpen(true);
             } else {
                 document.getElementById('convListSection').classList.remove('hidden');
                 document.getElementById('chatSection').classList.add('hidden');
+                setChatOpen(false);
             }
 
             connectWebSocket();
@@ -3567,6 +3586,7 @@
             const chatSection = document.getElementById('chatSection');
             if (convSection) convSection.classList.remove('hidden');
             if (chatSection) chatSection.classList.add('hidden');
+            setChatOpen(false);
             currentConvId = null;
             currentConvPartner = null;
             navigate('/messages', true);
@@ -3671,6 +3691,7 @@
 
             document.getElementById('convListSection').classList.add('hidden');
             document.getElementById('chatSection').classList.remove('hidden');
+            setChatOpen(true);
             document.getElementById('chatPartnerAvatar').src = avatar;
             document.getElementById('chatPartnerAvatar').style.filter = isBlocked ? 'grayscale(100%)' : '';
             const displayName = isBlocked
@@ -3717,7 +3738,7 @@
             renderConvList();
             const totalUnread = messengerConversations.reduce((s, c) => s + (parseInt(c.unread_count) || 0), 0);
             updateMsgBadge(totalUnread);
-            document.getElementById('chatInput').focus();
+            if (!isDumpApp) document.getElementById('chatInput').focus();
         }
 
         async function loadMessagesHttp(convId) {
@@ -3784,7 +3805,14 @@
                 markDumpFileExpired(link);
                 return;
             }
-            if (link?.href) window.location.href = link.href;
+            if (link?.href) {
+                if (isDumpApp && window.Android && Android.downloadFile) {
+                    const fileName = link.getAttribute('download') || link.href.split('/').pop().split('?')[0] || 'file';
+                    Android.downloadFile(link.href, fileName);
+                } else {
+                    window.location.href = link.href;
+                }
+            }
         }
         window.handleDumpFileDownload = handleDumpFileDownload;
 
@@ -3879,7 +3907,7 @@
                                 <span class="msg-audio-time">0:00</span>
                             </div>
                         </div>
-                        <a href="${downloadUrl}" class="msg-audio-download" onclick="handleDumpFileDownload(event, this)" download><i class="ph ph-download-simple"></i></a>
+                        <a href="${downloadUrl}" class="msg-audio-download" onclick="handleDumpFileDownload(event, this)" download="${safeFileNameAttr}"><i class="ph ph-download-simple"></i></a>
                     </div>`;
                 }
 
@@ -3896,7 +3924,7 @@
                         <span class="msg-file-name">${escHtml(decodedName)}</span>
                         <span class="msg-file-meta"><span class="msg-file-kind">${fileLabel}</span><span class="msg-file-separator">•</span>${formatFileSize(fileSize)}</span>
                     </div>
-                    <a href="${downloadUrl}" class="msg-file-dl" onclick="handleDumpFileDownload(event, this)" download title="Скачать"><i class="ph ph-download-simple"></i></a>
+                    <a href="${downloadUrl}" class="msg-file-dl" onclick="handleDumpFileDownload(event, this)" download="${safeFileNameAttr}" title="Скачать"><i class="ph ph-download-simple"></i></a>
                 </div>`;
             });
 

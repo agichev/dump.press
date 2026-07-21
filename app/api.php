@@ -119,7 +119,7 @@ function requireAuth() {
 }
 
 // CSRF для всех POST, кроме публичных эндпоинтов аутентификации.
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array($action, ['login', 'register', 'tfa_verify_login'], true)) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !in_array($action, ['login', 'register', 'tfa_verify_login', 'internal_notify_message'], true)) {
     $client_csrf = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf_token'] ?? '';
     if (!$current_session || !hash_equals($current_session['csrf_token'], $client_csrf)) {
         echo json_encode(['success' => false, 'error' => 'Ошибка безопасности (CSRF). Пожалуйста, обновите страницу.']);
@@ -1288,6 +1288,37 @@ try {
             echo json_encode(['success' => true]);
             break;
 
+        case 'mark_read':
+            requireAuth();
+            $conv_id = (int)($_POST['conversation_id'] ?? 0);
+            if (!$conv_id) throw new Exception('Не указан диалог');
+            $uid = (int)$current_session['user_id'];
+            $stmt_check = $pdo->prepare("SELECT 1 FROM conversation_participants WHERE conversation_id = ? AND user_id = ?");
+            $stmt_check->execute([$conv_id, $uid]);
+            if (!$stmt_check->fetch()) throw new Exception('Доступ запрещен');
+            $pdo->prepare("UPDATE message_status ms JOIN messages m ON ms.message_id = m.id SET ms.status = 'read', ms.updated_at = NOW() WHERE m.conversation_id = ? AND ms.user_id = ? AND ms.status IN ('sent','delivered')")->execute([$conv_id, $uid]);
+            $pdo->prepare("UPDATE conversation_participants SET last_read_at = NOW() WHERE conversation_id = ? AND user_id = ?")->execute([$conv_id, $uid]);
+            echo json_encode(['success' => true]);
+            break;
+
+        case 'internal_notify_message':
+            $secret = $_POST['_secret'] ?? '';
+            if ($secret !== 'dump_ws_push_2026') {
+                echo json_encode(['success' => false, 'error' => 'Forbidden']);
+                break;
+            }
+            $conv_id = (int)($_POST['conversation_id'] ?? 0);
+            $sender_id = (int)($_POST['sender_id'] ?? 0);
+            $recipient_id = (int)($_POST['recipient_id'] ?? 0);
+            if (!$conv_id || !$sender_id || !$recipient_id) {
+                echo json_encode(['success' => false, 'error' => 'Missing params']);
+                break;
+            }
+            require_once __DIR__ . '/lib/push.php';
+            sendFcmPush($pdo, $recipient_id, $sender_id, 'message', null, null, $conv_id);
+            echo json_encode(['success' => true]);
+            break;
+
         /* ---------------- МЕССЕНДЖЕР ---------------- */
         case 'gif_search':
             requireAuth();
@@ -1733,6 +1764,12 @@ try {
             $message['avatar_url'] = htmlspecialchars($message['avatar_url'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
             $pdo->prepare("UPDATE conversations SET updated_at = NOW() WHERE id = ?")->execute([$conv_id]);
+
+            $stmt_push = $pdo->prepare("SELECT user_id FROM conversation_participants WHERE conversation_id = ? AND user_id != ?");
+            $stmt_push->execute([$conv_id, $current_session['user_id']]);
+            while ($pu = $stmt_push->fetch()) {
+                $GLOBALS['__pending_pushes'][] = [$pdo, (int)$pu['user_id'], (int)$current_session['user_id'], 'message', null, null, $conv_id];
+            }
 
             echo json_encode(['success' => true, 'message' => $message]);
             break;

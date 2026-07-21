@@ -393,6 +393,14 @@
             font-size: 1.5rem;
         }
 
+        /* DumpApp base layout overrides (moved from inline style) */
+        body.dump-app {
+            padding-bottom: 56px;
+        }
+        body.dump-app .bottom-nav {
+            display: flex;
+        }
+
         /* ─── Mobile: только то, что реально нужно ─── */
         @media (max-width: 768px) {
             .post-wrapper {
@@ -466,10 +474,38 @@
             #mainNav.show-notif-btn #navNotifBtn { display: flex !important; }
             .bottom-nav { display: flex; }
             .bottom-nav.visible { display: flex; }
+
+            /* When a chat is open, hide bottom nav and snap input to the bottom edge */
+            body.chat-open {
+                padding-bottom: 0;
+            }
+            body.chat-open .bottom-nav {
+                display: none !important;
+            }
+            body.chat-open .messenger-container {
+                padding-bottom: 0;
+            }
+            body.chat-open .chat-input-area {
+                padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+            }
         }
 
         @media (min-width: 769px) {
             .bottom-nav { display: none !important; }
+        }
+
+        /* DumpApp chat-open overrides (independent of viewport width) */
+        body.dump-app.chat-open {
+            padding-bottom: 0 !important;
+        }
+        body.dump-app.chat-open .bottom-nav {
+            display: none !important;
+        }
+        body.dump-app.chat-open .messenger-container {
+            padding-bottom: 0;
+        }
+        body.dump-app.chat-open .chat-input-area {
+            padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
         }
 
         @media (max-width: 380px) {
@@ -1047,14 +1083,15 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            width: min(300px, 100%);
-            min-width: 210px;
+            max-width: 100%;
+            min-width: 0;
             margin-top: 4px;
             padding: 10px 11px;
             border: 1px solid var(--surface-hover);
             border-radius: var(--radius-md);
             background: var(--surface-elevated);
             cursor: default;
+            box-sizing: border-box;
         }
         .msg-file-icon {
             display: flex;
@@ -1160,8 +1197,8 @@
         .dump-player {
             --dp-accent: #ffffff;
             position: relative;
-            width: min(320px, 80vw);
-            max-width: 100%;
+            width: 100%;
+            max-width: 320px;
             max-height: 260px;
             border-radius: var(--radius-md);
             background: #000;
@@ -1406,9 +1443,10 @@
             border-radius: var(--radius-md);
             background: #0b0b0b;
             border: 1px solid rgba(255,255,255,0.08);
-            max-width: 300px;
-            min-width: 220px;
+            max-width: 100%;
+            min-width: 0;
             user-select: none;
+            box-sizing: border-box;
         }
         .msg-audio-widget audio { display: none; }
         .msg-audio-play {
@@ -1642,8 +1680,8 @@
             .context-menu { min-width: 200px; }
             .dump-player { width: 100%; max-width: 100%; }
             .dump-player.dump-file-expired { width: 100%; max-width: 100%; }
-            .msg-audio-widget { max-width: 72vw; min-width: 180px; }
-            .msg-file-widget { width: 72vw; min-width: 180px; }
+            .msg-audio-widget { max-width: 100%; min-width: 180px; }
+            .msg-file-widget { max-width: 100%; min-width: 0; }
             .msg-file-widget.dump-file-expired { width: 100%; max-width: 100%; }
         }
 
