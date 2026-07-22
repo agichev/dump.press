@@ -186,22 +186,43 @@ async function getConversations(db, userId) {
 
   for (const conv of rows) {
     conv.last_message = decryptServer(conv.last_message || '');
-    const [participants] = await db.execute(
-      `SELECT u.id, u.username, u.avatar_url
+    conv.participants = [];
+  }
+
+  if (rows.length > 0) {
+    const convIds = rows.map(r => r.id);
+    const placeholders = convIds.map(() => '?').join(',');
+    const [allParticipants] = await db.execute(
+      `SELECT cp.conversation_id, u.id, u.username, u.avatar_url
        FROM conversation_participants cp JOIN users u ON cp.user_id = u.id
-       WHERE cp.conversation_id = ? AND cp.user_id != ?`,
-      [conv.id, userId]
+       WHERE cp.conversation_id IN (${placeholders}) AND cp.user_id != ?`,
+      [...convIds, userId]
     );
 
-    if (participants.length === 0) {
-      conv.is_self_chat = true;
-      conv.participants = [{
-        id: -1,
-        username: 'Избранное',
-        avatar_url: '',
-      }];
-    } else {
-      conv.participants = participants;
+    const partMap = new Map();
+    for (const p of allParticipants) {
+      if (!partMap.has(p.conversation_id)) {
+        partMap.set(p.conversation_id, []);
+      }
+      partMap.get(p.conversation_id).push({
+        id: p.id,
+        username: p.username,
+        avatar_url: p.avatar_url
+      });
+    }
+
+    for (const conv of rows) {
+      const parts = partMap.get(conv.id) || [];
+      if (parts.length === 0) {
+        conv.is_self_chat = true;
+        conv.participants = [{
+          id: -1,
+          username: 'Избранное',
+          avatar_url: '',
+        }];
+      } else {
+        conv.participants = parts;
+      }
     }
   }
 
