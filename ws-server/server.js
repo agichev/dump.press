@@ -184,14 +184,33 @@ async function getConversations(db, userId) {
     [userId, userId]
   );
 
+  if (rows.length === 0) return rows;
+
+  const convIds = rows.map(r => r.id);
+  const placeholders = convIds.map(() => '?').join(',');
+
+  const [allParticipants] = await db.execute(
+    `SELECT cp.conversation_id, u.id, u.username, u.avatar_url
+     FROM conversation_participants cp JOIN users u ON cp.user_id = u.id
+     WHERE cp.conversation_id IN (${placeholders}) AND cp.user_id != ?`,
+    [...convIds, userId]
+  );
+
+  const participantsByConv = {};
+  for (const convId of convIds) {
+    participantsByConv[convId] = [];
+  }
+  for (const row of allParticipants) {
+    participantsByConv[row.conversation_id].push({
+        id: row.id,
+        username: row.username,
+        avatar_url: row.avatar_url
+    });
+  }
+
   for (const conv of rows) {
     conv.last_message = decryptServer(conv.last_message || '');
-    const [participants] = await db.execute(
-      `SELECT u.id, u.username, u.avatar_url
-       FROM conversation_participants cp JOIN users u ON cp.user_id = u.id
-       WHERE cp.conversation_id = ? AND cp.user_id != ?`,
-      [conv.id, userId]
-    );
+    const participants = participantsByConv[conv.id];
 
     if (participants.length === 0) {
       conv.is_self_chat = true;
@@ -237,10 +256,26 @@ async function getMessages(db, conversationId, userId, before = null, limit = 50
       msgIds
     );
 
+    const statusMap = new Map();
+    for (let i = 0; i < statusRows.length; i++) {
+      const sr = statusRows[i];
+      let entry = statusMap.get(sr.message_id);
+      if (!entry) {
+        entry = { my: null, other: null };
+        statusMap.set(sr.message_id, entry);
+      }
+      if (sr.user_id === userId) {
+        if (!entry.my) entry.my = sr;
+      } else {
+        if (!entry.other) entry.other = sr;
+      }
+    }
+
     for (const row of rows) {
       row.content = decryptServer(row.content || '');
-      const other = statusRows.find(sr => sr.message_id === row.id && sr.user_id !== userId);
-      const my = statusRows.find(sr => sr.message_id === row.id && sr.user_id === userId);
+      const statuses = statusMap.get(row.id);
+      const other = statuses ? statuses.other : null;
+      const my = statuses ? statuses.my : null;
       if (row.sender_id === userId) {
         row.my_status = other ? other.status : 'sent';
       } else {
