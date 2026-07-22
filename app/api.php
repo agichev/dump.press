@@ -1736,11 +1736,12 @@ try {
             // A new incoming message brings a previously hidden conversation back.
             $pdo->prepare("UPDATE conversation_participants SET is_deleted = 0 WHERE conversation_id = ? AND user_id != ?")
                 ->execute([$conv_id, $current_session['user_id']]);
-            $stmt_participants = $pdo->prepare("SELECT user_id FROM conversation_participants WHERE conversation_id = ? AND user_id != ?");
-            $stmt_participants->execute([$conv_id, $current_session['user_id']]);
-            while ($p = $stmt_participants->fetch()) {
-                $pdo->prepare("INSERT INTO message_status (message_id, user_id, status) VALUES (?, ?, 'sent')")->execute([$msg_id, $p['user_id']]);
-            }
+            $pdo->prepare("
+                INSERT INTO message_status (message_id, user_id, status)
+                SELECT ?, user_id, 'sent'
+                FROM conversation_participants
+                WHERE conversation_id = ? AND user_id != ?
+            ")->execute([$msg_id, $conv_id, $current_session['user_id']]);
 
             $stmt_msg = $pdo->prepare("
                 SELECT m.*, u.username, u.avatar_url
