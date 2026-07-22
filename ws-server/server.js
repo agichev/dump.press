@@ -829,5 +829,6 @@ wss.on('connection', (ws, req) => {
       ws.ping();
     }
   }, 30000);
+
 });
-module.exports = { encryptServer, decryptServer, wss };
+module.exports = { encryptServer, decryptServer };
