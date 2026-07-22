@@ -486,10 +486,9 @@
                 document.getElementById('navUserBtn').innerHTML = '<i class="ph ph-user"></i>';
                 document.getElementById('navCreateBtn').classList.remove('hidden');
                 document.getElementById('navNotifBtn').classList.remove('hidden');
-                const beta = isBetaUser();
-                document.getElementById('navMsgBtn').classList.toggle('hidden', !beta);
+                document.getElementById('navMsgBtn').classList.remove('hidden');
                 const bottomMsgBtn = document.querySelector('[data-nav="messenger"]');
-                if (bottomMsgBtn) bottomMsgBtn.classList.toggle('hidden', !beta);
+                if (bottomMsgBtn) bottomMsgBtn.classList.remove('hidden');
                 startNotifPolling();
             }
             
@@ -504,11 +503,6 @@
                 updateBottomNav();
             }
             else if ((path === '/messages' || path.startsWith('/messages/')) && !isGuest) {
-                if (!isBetaUser()) {
-                    navigate('/', true);
-                    showToast('Эта функция пока недоступна');
-                    return;
-                }
                 switchView('messengerView');
                 if(feedTabs) feedTabs.classList.add('hidden');
                 if(nav) nav.classList.add('show-notif-btn');
@@ -5659,21 +5653,7 @@
 
         window.togglePrivacyBeta = function(el) {
             savePrivacySetting('privacy_beta', el.checked);
-            updateBetaUI(el.checked);
-            if (!el.checked && window.location.pathname.includes('/messages')) {
-                navigate('/');
-            }
         };
-
-        function updateBetaUI(enabled) {
-            document.getElementById('navMsgBtn').classList.toggle('hidden', !enabled);
-            const bottomMsgBtn = document.querySelector('[data-nav="messenger"]');
-            if (bottomMsgBtn) bottomMsgBtn.classList.toggle('hidden', !enabled);
-        }
-
-        function isBetaUser() {
-            return currentUser && currentUser.privacy_beta == 1;
-        }
 
         window.togglePrivacyNoAds = function(el) {
             savePrivacySetting('privacy_no_ads', el.checked);
