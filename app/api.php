@@ -1524,26 +1524,25 @@ try {
             $stmt->execute([$current_session['user_id'], $current_session['user_id']]);
             $conversations = $stmt->fetchAll();
 
-            $conv_ids = array_column($conversations, 'id');
             $participants_by_conv = [];
-            if (!empty($conv_ids)) {
-                $in_placeholders = implode(',', array_fill(0, count($conv_ids), '?'));
+            if (!empty($conversations)) {
+                $conv_ids = array_column($conversations, 'id');
+                $placeholders = str_repeat('?,', count($conv_ids) - 1) . '?';
+
                 $stmt2 = $pdo->prepare("
                     SELECT cp.conversation_id, u.id, u.username, u.avatar_url
                     FROM conversation_participants cp JOIN users u ON cp.user_id = u.id
-                    WHERE cp.conversation_id IN ($in_placeholders) AND cp.user_id != ?
+                    WHERE cp.conversation_id IN ($placeholders) AND cp.user_id != ?
                 ");
-                $params = $conv_ids;
-                $params[] = $current_session['user_id'];
+
+                $params = array_merge($conv_ids, [$current_session['user_id']]);
                 $stmt2->execute($params);
                 $all_participants = $stmt2->fetchAll();
 
                 foreach ($all_participants as $p) {
-                    $participants_by_conv[$p['conversation_id']][] = [
-                        'id' => $p['id'],
-                        'username' => $p['username'],
-                        'avatar_url' => $p['avatar_url']
-                    ];
+                    $conv_id = $p['conversation_id'];
+                    unset($p['conversation_id']);
+                    $participants_by_conv[$conv_id][] = $p;
                 }
             }
 
