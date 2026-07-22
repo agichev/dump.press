@@ -1731,8 +1731,20 @@ try {
                 ->execute([$conv_id, $current_session['user_id']]);
             $stmt_participants = $pdo->prepare("SELECT user_id FROM conversation_participants WHERE conversation_id = ? AND user_id != ?");
             $stmt_participants->execute([$conv_id, $current_session['user_id']]);
-            while ($p = $stmt_participants->fetch()) {
-                $pdo->prepare("INSERT INTO message_status (message_id, user_id, status) VALUES (?, ?, 'sent')")->execute([$msg_id, $p['user_id']]);
+            $participants = $stmt_participants->fetchAll(PDO::FETCH_COLUMN);
+
+            if (!empty($participants)) {
+                $chunks = array_chunk($participants, 100);
+                foreach ($chunks as $chunk) {
+                    $placeholders = implode(',', array_fill(0, count($chunk), '(?, ?, ?)'));
+                    $values = [];
+                    foreach ($chunk as $uid_part) {
+                        $values[] = $msg_id;
+                        $values[] = $uid_part;
+                        $values[] = 'sent';
+                    }
+                    $pdo->prepare("INSERT INTO message_status (message_id, user_id, status) VALUES " . $placeholders)->execute($values);
+                }
             }
 
             $stmt_msg = $pdo->prepare("
