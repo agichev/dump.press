@@ -184,14 +184,33 @@ async function getConversations(db, userId) {
     [userId, userId]
   );
 
+  if (rows.length === 0) return rows;
+
+  const convIds = rows.map(r => r.id);
+  const placeholders = convIds.map(() => '?').join(',');
+
+  const [allParticipants] = await db.execute(
+    `SELECT cp.conversation_id, u.id, u.username, u.avatar_url
+     FROM conversation_participants cp JOIN users u ON cp.user_id = u.id
+     WHERE cp.conversation_id IN (${placeholders}) AND cp.user_id != ?`,
+    [...convIds, userId]
+  );
+
+  const participantsByConv = {};
+  for (const convId of convIds) {
+    participantsByConv[convId] = [];
+  }
+  for (const row of allParticipants) {
+    participantsByConv[row.conversation_id].push({
+        id: row.id,
+        username: row.username,
+        avatar_url: row.avatar_url
+    });
+  }
+
   for (const conv of rows) {
     conv.last_message = decryptServer(conv.last_message || '');
-    const [participants] = await db.execute(
-      `SELECT u.id, u.username, u.avatar_url
-       FROM conversation_participants cp JOIN users u ON cp.user_id = u.id
-       WHERE cp.conversation_id = ? AND cp.user_id != ?`,
-      [conv.id, userId]
-    );
+    const participants = participantsByConv[conv.id];
 
     if (participants.length === 0) {
       conv.is_self_chat = true;
