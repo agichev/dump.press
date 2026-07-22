@@ -1,5 +1,14 @@
 {
+    "name": "dump/press",
+    "description": "Dump.press",
     "require-dev": {
-        "phpunit/phpunit": "^12.5"
-    }
+        "phpunit/phpunit": "^10.0"
+    },
+    "authors": [
+        {
+            "name": "Jules",
+            "email": "jules@example.com"
+        }
+    ],
+    "require": {}
 }

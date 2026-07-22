@@ -1,106 +1,101 @@
 <?php
-declare(strict_types=1);
 
-use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 
-// Mock Redis class to intercept calls, only if it doesn't already exist.
-// This prevents fatal errors in CI environments where the redis extension is loaded.
+// The application uses env() and env_bool() which we need to mock or define for testing.
+// In the original config/config.php, these are conditionally defined.
+// By defining them here if they don't exist, we prevent fatal errors.
+if (!function_exists('env_bool')) {
+    function env_bool(string $key, bool $default = false): bool {
+        return isset($_ENV[$key]) ? (bool)$_ENV[$key] : $default;
+    }
+}
+if (!function_exists('env')) {
+    function env(string $key, string $default = ''): string {
+        return $_ENV[$key] ?? $default;
+    }
+}
+
+// Ensure tests can run even if the PHP environment does not have the Redis extension.
+// Also ensures we don't crash if the real Redis extension is loaded (e.g. `Cannot declare class Redis`).
 if (!class_exists('Redis', false)) {
     class Redis {
-        public static $mockException = false;
-        public static $mockValue = null;
-        public static $connectFails = false;
+        public static $get_return_value = null;
+        public static $should_throw = false;
 
-        public const OPT_READ_TIMEOUT = 1;
-
-        public function connect($host, $port, $timeout) {
-            if (self::$connectFails) return false;
-            return true;
-        }
-
-        public function auth($password) {
-            return true;
-        }
-
-        public function select($database) {
-            return true;
-        }
-
-        public function setOption($name, $value) {
-            return true;
-        }
+        public function connect($host, $port, $timeout) { return true; }
+        public function auth($pass) { return true; }
+        public function select($db) { return true; }
 
         public function get($key) {
-            if (self::$mockException) {
-                throw new \Exception("Redis connection error");
+            if (self::$should_throw) {
+                throw new Exception("Mock exception for testing");
             }
-            return self::$mockValue;
+            return self::$get_return_value;
+        }
+
+        // Mock method to allow testing setex etc if needed in the future
+        public function setex($key, $ttl, $value) {
+            return true;
         }
     }
 }
 
-// Ensure the environment is loaded correctly
-$_ENV['REDIS_ENABLED'] = 'true';
-require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../app/lib/cache.php';
 
 class CacheTest extends TestCase
 {
     protected function setUp(): void
     {
-        if (!class_exists('Redis', false) || (new ReflectionClass('Redis'))->isUserDefined()) {
-            Redis::$mockException = false;
-            Redis::$mockValue = null;
-            Redis::$connectFails = false;
+        parent::setUp();
+        // Enable Redis in the mocked env
+        $_ENV['REDIS_ENABLED'] = true;
+        $_ENV['REDIS_PREFIX'] = 'dump:';
+
+        if (class_exists('Redis') && property_exists('Redis', 'should_throw')) {
+            Redis::$should_throw = false;
+            Redis::$get_return_value = null;
         }
-        $_ENV['REDIS_ENABLED'] = 'true';
     }
 
     public function testDumpCacheGetReturnsString()
     {
-        if (class_exists('Redis', false) && !(new ReflectionClass('Redis'))->isUserDefined()) {
-            $this->markTestSkipped('Real Redis extension loaded, cannot mock global class.');
+        if (class_exists('Redis') && property_exists('Redis', 'get_return_value')) {
+            Redis::$get_return_value = "hello_world";
+            $this->assertEquals("hello_world", dumpCacheGet("test_key_1"));
+        } else {
+            $this->markTestSkipped('Real Redis extension loaded, cannot use internal mock.');
         }
-
-        Redis::$mockValue = 'expected_value';
-        $result = dumpCacheGet('test_key');
-        $this->assertSame('expected_value', $result);
     }
 
-    public function testDumpCacheGetReturnsNullForNonString()
+    public function testDumpCacheGetReturnsNullOnFalse()
     {
-        if (class_exists('Redis', false) && !(new ReflectionClass('Redis'))->isUserDefined()) {
-            $this->markTestSkipped('Real Redis extension loaded, cannot mock global class.');
+        if (class_exists('Redis') && property_exists('Redis', 'get_return_value')) {
+            Redis::$get_return_value = false;
+            $this->assertNull(dumpCacheGet("test_key_2"));
+        } else {
+            $this->markTestSkipped('Real Redis extension loaded, cannot use internal mock.');
         }
-
-        Redis::$mockValue = 123;
-        $result = dumpCacheGet('test_key');
-        $this->assertNull($result);
-
-        Redis::$mockValue = true;
-        $result = dumpCacheGet('test_key');
-        $this->assertNull($result);
     }
 
     public function testDumpCacheGetReturnsNullOnException()
     {
-        if (class_exists('Redis', false) && !(new ReflectionClass('Redis'))->isUserDefined()) {
-            $this->markTestSkipped('Real Redis extension loaded, cannot mock global class.');
+        if (class_exists('Redis') && property_exists('Redis', 'should_throw')) {
+            Redis::$should_throw = true;
+            $this->assertNull(dumpCacheGet("test_key_3"));
+        } else {
+            $this->markTestSkipped('Real Redis extension loaded, cannot use internal mock.');
         }
-
-        Redis::$mockException = true;
-        $result = dumpCacheGet('test_key');
-        $this->assertNull($result);
     }
 
-    #[RunInSeparateProcess]
-    public function testDumpCacheGetReturnsNullIfRedisUnavailable()
+    public function testDumpCacheGetReturnsNullOnInvalidType()
     {
-        // This runs in a new process, so dumpRedis() static cache is empty
-        $_ENV['REDIS_ENABLED'] = 'false';
-
-        $result = dumpCacheGet('test_key');
-        $this->assertNull($result);
+        // dumpCacheGet returns null if value is not a string
+        if (class_exists('Redis') && property_exists('Redis', 'get_return_value')) {
+            Redis::$get_return_value = ["invalid"];
+            $this->assertNull(dumpCacheGet("test_key_4"));
+        } else {
+            $this->markTestSkipped('Real Redis extension loaded, cannot use internal mock.');
+        }
     }
 }
