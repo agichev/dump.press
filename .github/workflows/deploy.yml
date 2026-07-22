@@ -21,24 +21,23 @@ jobs:
             set -e
             cd /var/www/dump.press
 
-            # Force-sync to remote (discard any local changes on server)
-            OLD_HEAD=$(git rev-parse HEAD 2>/dev/null || echo "")
-            git fetch origin main
-            git reset --hard origin/main
-            git clean -fd
+            # Stash local changes to avoid merge conflicts
+            git stash --include-untracked 2>/dev/null || true
 
+            OLD_HEAD=$(git rev-parse HEAD 2>/dev/null || echo "")
+            git pull origin main
             NEW_HEAD=$(git rev-parse HEAD)
 
             [ "$OLD_HEAD" = "$NEW_HEAD" ] && echo "No new commits — done" && exit 0
 
             CHANGED=$(git diff --name-only "$OLD_HEAD" "$NEW_HEAD")
 
-            # Fix ownership (everything except .env mode kept)
+            # Fix ownership
             chown -R www-data:www-data /var/www/dump.press
 
-            # ws-server changed → npm install + restart
-            if echo "$CHANGED" | grep -q "^ws-server/"; then
-              echo "ws-server changed — npm install + restart dump-ws"
+            # ws-server: rebuild deps if missing OR if ws-server files changed
+            if [ ! -d /var/www/dump.press/ws-server/node_modules ] || echo "$CHANGED" | grep -q "^ws-server/"; then
+              echo "ws-server — npm install + restart dump-ws"
               cd /var/www/dump.press/ws-server
               npm install
               systemctl restart dump-ws
