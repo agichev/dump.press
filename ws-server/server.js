@@ -256,26 +256,25 @@ async function getMessages(db, conversationId, userId, before = null, limit = 50
       msgIds
     );
 
-    const statusMap = new Map();
-    for (let i = 0; i < statusRows.length; i++) {
-      const sr = statusRows[i];
-      let entry = statusMap.get(sr.message_id);
-      if (!entry) {
-        entry = { my: null, other: null };
-        statusMap.set(sr.message_id, entry);
-      }
-      if (sr.user_id === userId) {
-        if (!entry.my) entry.my = sr;
+    const statusByMessageOther = new Map();
+    const statusByMessageMy = new Map();
+
+    for (const sr of statusRows) {
+      if (sr.user_id !== userId) {
+        if (!statusByMessageOther.has(sr.message_id)) {
+          statusByMessageOther.set(sr.message_id, sr);
+        }
       } else {
-        if (!entry.other) entry.other = sr;
+        if (!statusByMessageMy.has(sr.message_id)) {
+          statusByMessageMy.set(sr.message_id, sr);
+        }
       }
     }
 
     for (const row of rows) {
       row.content = decryptServer(row.content || '');
-      const statuses = statusMap.get(row.id);
-      const other = statuses ? statuses.other : null;
-      const my = statuses ? statuses.my : null;
+      const other = statusByMessageOther.get(row.id);
+      const my = statusByMessageMy.get(row.id);
       if (row.sender_id === userId) {
         row.my_status = other ? other.status : 'sent';
       } else {
