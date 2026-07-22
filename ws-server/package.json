@@ -4,7 +4,8 @@
   "description": "Dump WebSocket server",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "jest"
   },
   "keywords": [],
   "author": "",
@@ -12,5 +13,8 @@
   "dependencies": {
     "mysql2": "^3.22.6",
     "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "jest": "^30.4.2"
   }
 }
