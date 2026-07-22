@@ -1714,25 +1714,28 @@
             height: auto;
             border-radius: var(--radius-md);
             overflow: hidden;
-            border: 1px solid rgba(255,255,255,0.12);
+            border: none;
             opacity: 0;
             visibility: hidden;
-            transition: opacity 0.5s ease, transform 0.3s ease;
-            box-shadow: 0 4px 30px rgba(0,0,0,0.6);
+            transition: opacity 0.5s ease;
+            box-shadow: 0 0 50px 20px #000;
         }
         .left-banner.visible {
             opacity: 1;
             visibility: visible;
         }
+        .left-banner::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            box-shadow: inset 0 0 40px 20px #000;
+            pointer-events: none;
+            border-radius: var(--radius-md);
+        }
         .left-banner img {
             width: 100%;
             height: auto;
             display: block;
-        }
-        .left-banner:hover {
-            transform: scale(1.03);
-            box-shadow: 0 6px 40px rgba(0,0,0,0.75);
-            border-color: rgba(255,255,255,0.25);
         }
 
         @media (max-width: 1200px) {
