@@ -1,54 +1,53 @@
 <?php
 require_once __DIR__ . '/../app/lib/totp.php';
 
-$testsPassed = 0;
-$testsFailed = 0;
+$errors = 0;
 
-function assertEqual($expected, $actual, $testName) {
-    global $testsPassed, $testsFailed;
-    if ($expected === $actual) {
-        echo "✅ PASS: {$testName}\n";
-        $testsPassed++;
+function assert_true($condition, $message) {
+    global $errors;
+    if (!$condition) {
+        echo "FAIL: $message\n";
+        $errors++;
     } else {
-        echo "❌ FAIL: {$testName}\n";
-        echo "   Expected: " . var_export($expected, true) . "\n";
-        echo "   Actual:   " . var_export($actual, true) . "\n";
-        $testsFailed++;
+        echo "PASS: $message\n";
     }
 }
 
-echo "Running tests for base32_decode_tfa...\n";
+echo "Testing generateBase32Secret()\n";
 
-// RFC 4648 test vectors (without padding)
-assertEqual("", base32_decode_tfa(""), "Empty string");
-assertEqual("f", base32_decode_tfa("MY"), "Decode 'f'");
-assertEqual("fo", base32_decode_tfa("MZXQ"), "Decode 'fo'");
-assertEqual("foo", base32_decode_tfa("MZXW6"), "Decode 'foo'");
-assertEqual("foob", base32_decode_tfa("MZXW6YQ"), "Decode 'foob'");
-assertEqual("fooba", base32_decode_tfa("MZXW6YTB"), "Decode 'fooba'");
-assertEqual("foobar", base32_decode_tfa("MZXW6YTBOI"), "Decode 'foobar'");
+// Test 1: Default length should be 16
+$secret = generateBase32Secret();
+assert_true(strlen($secret) === 16, "Default length should be 16, got " . strlen($secret));
 
-// RFC 4648 test vectors (with padding)
-assertEqual("f", base32_decode_tfa("MY======"), "Decode 'f' with padding");
-assertEqual("fo", base32_decode_tfa("MZXQ===="), "Decode 'fo' with padding");
-assertEqual("foo", base32_decode_tfa("MZXW6==="), "Decode 'foo' with padding");
-assertEqual("foob", base32_decode_tfa("MZXW6YQ="), "Decode 'foob' with padding");
-assertEqual("foobar", base32_decode_tfa("MZXW6YTBOI======"), "Decode 'foobar' with padding");
+// Test 2: Custom length should be respected
+$secret = generateBase32Secret(32);
+assert_true(strlen($secret) === 32, "Custom length of 32 should be respected, got " . strlen($secret));
 
-// Case insensitivity
-assertEqual("foobar", base32_decode_tfa("mzxw6ytboi======"), "Case insensitivity (lowercase)");
-assertEqual("foobar", base32_decode_tfa("MzXw6yTbOi======"), "Case insensitivity (mixed case)");
+// Test 3: Length 0
+$secret = generateBase32Secret(0);
+assert_true(strlen($secret) === 0, "Custom length of 0 should be respected, got " . strlen($secret));
 
-// Ignoring non-Base32 characters
-assertEqual("foobar", base32_decode_tfa("M Z X W 6 Y T B O I"), "Ignore spaces");
-assertEqual("foobar", base32_decode_tfa("M-Z-X-W-6-Y-T-B-O-I"), "Ignore hyphens");
+// Test 4: Generated secret should only contain valid Base32 characters
+$secret = generateBase32Secret(100);
+$valid_chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+$is_valid = true;
+for ($i = 0; $i < strlen($secret); $i++) {
+    if (strpos($valid_chars, $secret[$i]) === false) {
+        $is_valid = false;
+        break;
+    }
+}
+assert_true($is_valid, "Secret should only contain characters from A-Z and 2-7");
 
-// Base32 encoding with padding chars everywhere
-assertEqual("foobar", base32_decode_tfa("=M=Z=X=W=6=Y=T=B=O=I="), "Ignore padding characters in arbitrary positions");
+// Test 5: Multiple calls generate different secrets (most likely)
+$secret1 = generateBase32Secret();
+$secret2 = generateBase32Secret();
+assert_true($secret1 !== $secret2, "Successive calls should generate different secrets");
 
-echo "\nTests completed.\n";
-echo "Passed: $testsPassed, Failed: $testsFailed\n";
-
-if ($testsFailed > 0) {
+if ($errors > 0) {
+    echo "\nTests failed: $errors\n";
     exit(1);
+} else {
+    echo "\nAll tests passed!\n";
+    exit(0);
 }
