@@ -1,0 +1,43 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          script: |
+            set -e
+            cd /var/www/dump.press
+
+            OLD_HEAD=$(git rev-parse HEAD 2>/dev/null || echo "")
+            git pull origin main
+            NEW_HEAD=$(git rev-parse HEAD)
+
+            [ "$OLD_HEAD" = "$NEW_HEAD" ] && echo "No new commits — done" && exit 0
+
+            CHANGED=$(git diff --name-only "$OLD_HEAD" "$NEW_HEAD")
+
+            # Fix ownership (everything except .env mode kept)
+            chown -R www-data:www-data /var/www/dump.press
+
+            # ws-server changed → npm install + restart
+            if echo "$CHANGED" | grep -q "^ws-server/"; then
+              echo "ws-server changed — npm install + restart dump-ws"
+              cd /var/www/dump.press/ws-server
+              npm install
+              systemctl restart dump-ws
+            fi
+
+            echo "Deploy complete"
