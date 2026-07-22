@@ -830,3 +830,4 @@ wss.on('connection', (ws, req) => {
     }
   }, 30000);
 });
+module.exports = { encryptServer, decryptServer, wss };
