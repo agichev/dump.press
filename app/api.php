@@ -1593,15 +1593,22 @@ try {
                 $stmt_status->execute($msg_ids);
                 $status_rows = $stmt_status->fetchAll();
 
-                foreach ($messages as &$msg) {
-                    $other = null;
-                    $my = null;
-                    foreach ($status_rows as $sr) {
-                        if ((int)$sr['message_id'] === (int)$msg['id']) {
-                            if ((int)$sr['user_id'] === $uid) $my = $sr['status'];
-                            else $other = $sr['status'];
-                        }
+                $status_lookup = [];
+                foreach ($status_rows as $sr) {
+                    $msg_id = (int)$sr['message_id'];
+                    $user_id = (int)$sr['user_id'];
+                    if ($user_id === $uid) {
+                        $status_lookup[$msg_id]['my'] = $sr['status'];
+                    } else {
+                        $status_lookup[$msg_id]['other'] = $sr['status'];
                     }
+                }
+
+                foreach ($messages as &$msg) {
+                    $msg_id = (int)$msg['id'];
+                    $my = $status_lookup[$msg_id]['my'] ?? null;
+                    $other = $status_lookup[$msg_id]['other'] ?? null;
+
                     if ((int)$msg['sender_id'] === $uid) {
                         $msg['my_status'] = $other ?: 'sent';
                     } else {
