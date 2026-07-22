@@ -32,8 +32,8 @@ jobs:
 
             CHANGED=$(git diff --name-only "$OLD_HEAD" "$NEW_HEAD")
 
-            # Fix ownership
-            chown -R www-data:www-data /var/www/dump.press
+            # Fix ownership (everything except .env mode kept)
+            find /var/www/dump.press -not -name ".env" -exec chown www-data:www-data {} +
 
             # ws-server: rebuild deps if missing OR if ws-server files changed
             if [ ! -d /var/www/dump.press/ws-server/node_modules ] || echo "$CHANGED" | grep -q "^ws-server/"; then
