@@ -10,7 +10,8 @@ function verifyRecaptcha(?string $token): bool {
     }
     if (!$token) return false;
 
-    $ch = curl_init('https://www.google.com/recaptcha/api/siteverify');
+    $url = $GLOBALS['RECAPTCHA_VERIFY_URL'] ?? 'https://www.google.com/recaptcha/api/siteverify';
+    $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
