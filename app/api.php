@@ -857,11 +857,12 @@ try {
             }
 
             $mentions = extractMentions($content);
-            foreach ($mentions as $username) {
-                $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ?");
-                $stmt->execute([$username]);
-                $mentioned_user = $stmt->fetch();
-                if ($mentioned_user) {
+            if (!empty($mentions)) {
+                $inQuery = implode(',', array_fill(0, count($mentions), '?'));
+                $stmt = $pdo->prepare("SELECT id FROM users WHERE username IN ($inQuery)");
+                $stmt->execute(array_values($mentions));
+                $mentioned_users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($mentioned_users as $mentioned_user) {
                     createNotification($pdo, (int)$mentioned_user['id'], (int)$current_session['user_id'], 'mention', $new_post_id, $slug);
                 }
             }
@@ -989,11 +990,12 @@ try {
                 createNotification($pdo, (int)$post_info['user_id'], (int)$current_session['user_id'], 'comment', $post_id, $post_info['slug']);
 
                 $mentions = extractMentions($content);
-                foreach ($mentions as $username) {
-                    $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ?");
-                    $stmt->execute([$username]);
-                    $mentioned_user = $stmt->fetch();
-                    if ($mentioned_user) {
+                if (!empty($mentions)) {
+                    $inQuery = implode(',', array_fill(0, count($mentions), '?'));
+                    $stmt = $pdo->prepare("SELECT id FROM users WHERE username IN ($inQuery)");
+                    $stmt->execute(array_values($mentions));
+                    $mentioned_users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    foreach ($mentioned_users as $mentioned_user) {
                         createNotification($pdo, (int)$mentioned_user['id'], (int)$current_session['user_id'], 'mention', $post_id, $post_info['slug']);
                     }
                 }
