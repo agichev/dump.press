@@ -7,96 +7,71 @@ require_once __DIR__ . '/../app/lib/security.php';
 
 class SecurityTest extends TestCase
 {
-    private string $mockFile;
+    private static $serverPid;
+    private static $mockUrl = 'http://localhost:8081/turnstile';
 
-    protected function setUp(): void
+    public static function setUpBeforeClass(): void
     {
-        parent::setUp();
-        // Create a temporary file to mock cURL responses via file:// protocol
-        $this->mockFile = tempnam(sys_get_temp_dir(), 'mock_recaptcha_');
-        $GLOBALS['RECAPTCHA_VERIFY_URL'] = 'file://' . $this->mockFile;
+        $serverCode = <<<'CODE'
+<?php
+$requestUri = $_SERVER['REQUEST_URI'];
+if ($requestUri === '/turnstile') {
+    $secret = $_POST['secret'] ?? '';
+    $response = $_POST['response'] ?? '';
 
-        // Reset global configurations
-        $GLOBALS['RECAPTCHA_V3_SECRET_KEY'] = 'test_secret';
-        $GLOBALS['RECAPTCHA_V3_SITE_KEY'] = 'test_site';
-        unset($GLOBALS['DEV_MODE']);
+    if ($secret === 'valid_secret' && $response === 'valid_token') {
+        echo json_encode(['success' => true]);
+    } else {
+        echo json_encode(['success' => false]);
+    }
+}
+CODE;
+        file_put_contents(__DIR__ . '/MockServer.php', $serverCode);
+        $command = 'php -S localhost:8081 ' . __DIR__ . '/MockServer.php > /dev/null 2>&1 & echo $!';
+        self::$serverPid = exec($command);
+        sleep(1); // Give the server time to start
+    }
+
+    public static function tearDownAfterClass(): void
+    {
+        if (self::$serverPid) {
+            exec('kill ' . self::$serverPid);
+        }
+        if (file_exists(__DIR__ . '/MockServer.php')) {
+            unlink(__DIR__ . '/MockServer.php');
+        }
     }
 
     protected function tearDown(): void
     {
-        if (file_exists($this->mockFile)) {
-            unlink($this->mockFile);
-        }
-        unset($GLOBALS['RECAPTCHA_VERIFY_URL']);
-        unset($GLOBALS['RECAPTCHA_V3_SECRET_KEY']);
-        unset($GLOBALS['RECAPTCHA_V3_SITE_KEY']);
-        unset($GLOBALS['DEV_MODE']);
+        unset($GLOBALS['TURNSTILE_SECRET_KEY']);
         parent::tearDown();
     }
 
-    private function setMockResponse(array $data): void
+    public function testVerifyTurnstileWithNoSecretReturnsFalse()
     {
-        file_put_contents($this->mockFile, json_encode($data));
+        $GLOBALS['TURNSTILE_SECRET_KEY'] = '';
+        $this->assertFalse(verifyTurnstile('valid_token', self::$mockUrl));
+
+        unset($GLOBALS['TURNSTILE_SECRET_KEY']);
+        $this->assertFalse(verifyTurnstile('valid_token', self::$mockUrl));
     }
 
-    public function testVerifyRecaptchaReturnsTrueInDevModeWhenKeysAreEmpty(): void
+    public function testVerifyTurnstileWithNoTokenReturnsFalse()
     {
-        $GLOBALS['RECAPTCHA_V3_SECRET_KEY'] = '';
-        $GLOBALS['RECAPTCHA_V3_SITE_KEY'] = '';
-        $GLOBALS['DEV_MODE'] = true;
-
-        $this->assertTrue(verifyRecaptcha('some_token'));
+        $GLOBALS['TURNSTILE_SECRET_KEY'] = 'valid_secret';
+        $this->assertFalse(verifyTurnstile('', self::$mockUrl));
     }
 
-    public function testVerifyRecaptchaReturnsFalseNotInDevModeWhenKeysAreEmpty(): void
+    public function testVerifyTurnstileWithSuccessfulVerificationReturnsTrue()
     {
-        $GLOBALS['RECAPTCHA_V3_SECRET_KEY'] = '';
-        $GLOBALS['RECAPTCHA_V3_SITE_KEY'] = '';
-        unset($GLOBALS['DEV_MODE']);
-
-        $this->assertFalse(verifyRecaptcha('some_token'));
+        $GLOBALS['TURNSTILE_SECRET_KEY'] = 'valid_secret';
+        $this->assertTrue(verifyTurnstile('valid_token', self::$mockUrl));
     }
 
-    public function testVerifyRecaptchaReturnsFalseWithEmptyToken(): void
+    public function testVerifyTurnstileWithUnsuccessfulVerificationReturnsFalse()
     {
-        $this->assertFalse(verifyRecaptcha(''));
-        $this->assertFalse(verifyRecaptcha(null));
-    }
-
-    public function testVerifyRecaptchaReturnsTrueWithValidResponseAndScore(): void
-    {
-        $this->setMockResponse(['success' => true, 'score' => 0.9]);
-        $this->assertTrue(verifyRecaptcha('valid_token'));
-    }
-
-    public function testVerifyRecaptchaReturnsTrueWithExactMinimumScore(): void
-    {
-        $this->setMockResponse(['success' => true, 'score' => 0.5]);
-        $this->assertTrue(verifyRecaptcha('valid_token'));
-    }
-
-    public function testVerifyRecaptchaReturnsFalseWithLowScore(): void
-    {
-        $this->setMockResponse(['success' => true, 'score' => 0.49]);
-        $this->assertFalse(verifyRecaptcha('valid_token'));
-    }
-
-    public function testVerifyRecaptchaReturnsFalseWhenSuccessIsFalse(): void
-    {
-        $this->setMockResponse(['success' => false, 'score' => 0.9]);
-        $this->assertFalse(verifyRecaptcha('valid_token'));
-    }
-
-    public function testVerifyRecaptchaReturnsFalseOnInvalidJson(): void
-    {
-        file_put_contents($this->mockFile, 'invalid json');
-        $this->assertFalse(verifyRecaptcha('valid_token'));
-    }
-
-    public function testVerifyRecaptchaReturnsFalseOnNetworkError(): void
-    {
-        // By unlinking the mock file, file:// will fail, simulating a network error
-        unlink($this->mockFile);
-        $this->assertFalse(verifyRecaptcha('valid_token'));
+        $GLOBALS['TURNSTILE_SECRET_KEY'] = 'valid_secret';
+        $this->assertFalse(verifyTurnstile('invalid_token', self::$mockUrl));
     }
 }
