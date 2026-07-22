@@ -4,6 +4,7 @@
 .env.*.local
 
 AGENTS.md
+.agents-state.md
 
 # Зависимости
 /vendor/
