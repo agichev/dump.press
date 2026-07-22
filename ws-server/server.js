@@ -237,10 +237,26 @@ async function getMessages(db, conversationId, userId, before = null, limit = 50
       msgIds
     );
 
+    const statusMap = new Map();
+    for (let i = 0; i < statusRows.length; i++) {
+      const sr = statusRows[i];
+      let entry = statusMap.get(sr.message_id);
+      if (!entry) {
+        entry = { my: null, other: null };
+        statusMap.set(sr.message_id, entry);
+      }
+      if (sr.user_id === userId) {
+        if (!entry.my) entry.my = sr;
+      } else {
+        if (!entry.other) entry.other = sr;
+      }
+    }
+
     for (const row of rows) {
       row.content = decryptServer(row.content || '');
-      const other = statusRows.find(sr => sr.message_id === row.id && sr.user_id !== userId);
-      const my = statusRows.find(sr => sr.message_id === row.id && sr.user_id === userId);
+      const statuses = statusMap.get(row.id);
+      const other = statuses ? statuses.other : null;
+      const my = statuses ? statuses.my : null;
       if (row.sender_id === userId) {
         row.my_status = other ? other.status : 'sent';
       } else {

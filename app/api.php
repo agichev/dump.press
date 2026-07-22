@@ -1524,14 +1524,31 @@ try {
             $stmt->execute([$current_session['user_id'], $current_session['user_id']]);
             $conversations = $stmt->fetchAll();
 
-            foreach ($conversations as &$conv) {
+            $conv_ids = array_column($conversations, 'id');
+            $participants_by_conv = [];
+            if (!empty($conv_ids)) {
+                $in_placeholders = implode(',', array_fill(0, count($conv_ids), '?'));
                 $stmt2 = $pdo->prepare("
-                    SELECT u.id, u.username, u.avatar_url
+                    SELECT cp.conversation_id, u.id, u.username, u.avatar_url
                     FROM conversation_participants cp JOIN users u ON cp.user_id = u.id
-                    WHERE cp.conversation_id = ? AND cp.user_id != ?
+                    WHERE cp.conversation_id IN ($in_placeholders) AND cp.user_id != ?
                 ");
-                $stmt2->execute([$conv['id'], $current_session['user_id']]);
-                $conv['participants'] = $stmt2->fetchAll();
+                $params = $conv_ids;
+                $params[] = $current_session['user_id'];
+                $stmt2->execute($params);
+                $all_participants = $stmt2->fetchAll();
+
+                foreach ($all_participants as $p) {
+                    $participants_by_conv[$p['conversation_id']][] = [
+                        'id' => $p['id'],
+                        'username' => $p['username'],
+                        'avatar_url' => $p['avatar_url']
+                    ];
+                }
+            }
+
+            foreach ($conversations as &$conv) {
+                $conv['participants'] = $participants_by_conv[$conv['id']] ?? [];
 
                 if (empty($conv['participants'])) {
                     $conv['is_self_chat'] = true;
@@ -1593,15 +1610,22 @@ try {
                 $stmt_status->execute($msg_ids);
                 $status_rows = $stmt_status->fetchAll();
 
-                foreach ($messages as &$msg) {
-                    $other = null;
-                    $my = null;
-                    foreach ($status_rows as $sr) {
-                        if ((int)$sr['message_id'] === (int)$msg['id']) {
-                            if ((int)$sr['user_id'] === $uid) $my = $sr['status'];
-                            else $other = $sr['status'];
-                        }
+                $status_lookup = [];
+                foreach ($status_rows as $sr) {
+                    $msg_id = (int)$sr['message_id'];
+                    $user_id = (int)$sr['user_id'];
+                    if ($user_id === $uid) {
+                        $status_lookup[$msg_id]['my'] = $sr['status'];
+                    } else {
+                        $status_lookup[$msg_id]['other'] = $sr['status'];
                     }
+                }
+
+                foreach ($messages as &$msg) {
+                    $msg_id = (int)$msg['id'];
+                    $my = $status_lookup[$msg_id]['my'] ?? null;
+                    $other = $status_lookup[$msg_id]['other'] ?? null;
+
                     if ((int)$msg['sender_id'] === $uid) {
                         $msg['my_status'] = $other ?: 'sent';
                     } else {
@@ -1729,11 +1753,12 @@ try {
             // A new incoming message brings a previously hidden conversation back.
             $pdo->prepare("UPDATE conversation_participants SET is_deleted = 0 WHERE conversation_id = ? AND user_id != ?")
                 ->execute([$conv_id, $current_session['user_id']]);
-            $stmt_participants = $pdo->prepare("SELECT user_id FROM conversation_participants WHERE conversation_id = ? AND user_id != ?");
-            $stmt_participants->execute([$conv_id, $current_session['user_id']]);
-            while ($p = $stmt_participants->fetch()) {
-                $pdo->prepare("INSERT INTO message_status (message_id, user_id, status) VALUES (?, ?, 'sent')")->execute([$msg_id, $p['user_id']]);
-            }
+            $pdo->prepare("
+                INSERT INTO message_status (message_id, user_id, status)
+                SELECT ?, user_id, 'sent'
+                FROM conversation_participants
+                WHERE conversation_id = ? AND user_id != ?
+            ")->execute([$msg_id, $conv_id, $current_session['user_id']]);
 
             $stmt_msg = $pdo->prepare("
                 SELECT m.*, u.username, u.avatar_url
