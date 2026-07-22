@@ -55,8 +55,8 @@ function dumpCacheGet(string $key): ?string {
     }
 }
 
-function dumpCacheSet(string $key, string $value, int $ttl): bool {
-    $redis = dumpRedis();
+function dumpCacheSet(string $key, string $value, int $ttl, ?object $redis = null): bool {
+    $redis = $redis ?? dumpRedis();
     if (!$redis || $ttl < 1) return false;
 
     try {
