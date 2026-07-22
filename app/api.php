@@ -1524,14 +1524,30 @@ try {
             $stmt->execute([$current_session['user_id'], $current_session['user_id']]);
             $conversations = $stmt->fetchAll();
 
-            foreach ($conversations as &$conv) {
+            $participants_by_conv = [];
+            if (!empty($conversations)) {
+                $conv_ids = array_column($conversations, 'id');
+                $placeholders = str_repeat('?,', count($conv_ids) - 1) . '?';
+
                 $stmt2 = $pdo->prepare("
-                    SELECT u.id, u.username, u.avatar_url
+                    SELECT cp.conversation_id, u.id, u.username, u.avatar_url
                     FROM conversation_participants cp JOIN users u ON cp.user_id = u.id
-                    WHERE cp.conversation_id = ? AND cp.user_id != ?
+                    WHERE cp.conversation_id IN ($placeholders) AND cp.user_id != ?
                 ");
-                $stmt2->execute([$conv['id'], $current_session['user_id']]);
-                $conv['participants'] = $stmt2->fetchAll();
+
+                $params = array_merge($conv_ids, [$current_session['user_id']]);
+                $stmt2->execute($params);
+                $all_participants = $stmt2->fetchAll();
+
+                foreach ($all_participants as $p) {
+                    $conv_id = $p['conversation_id'];
+                    unset($p['conversation_id']);
+                    $participants_by_conv[$conv_id][] = $p;
+                }
+            }
+
+            foreach ($conversations as &$conv) {
+                $conv['participants'] = $participants_by_conv[$conv['id']] ?? [];
 
                 if (empty($conv['participants'])) {
                     $conv['is_self_chat'] = true;
