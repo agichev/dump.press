@@ -1714,9 +1714,12 @@ try {
 
             $stmt_partners = $pdo->prepare("SELECT cp.user_id FROM conversation_participants cp WHERE cp.conversation_id = ? AND cp.user_id != ?");
             $stmt_partners->execute([$conv_id, $uid]);
-            while ($partner = $stmt_partners->fetch()) {
-                $b = $pdo->prepare("SELECT 1 FROM blocked_users WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?) LIMIT 1");
-                $b->execute([$uid, $partner['user_id'], $partner['user_id'], $uid]);
+            $partners = $stmt_partners->fetchAll(PDO::FETCH_COLUMN);
+            if (!empty($partners)) {
+                $placeholders = implode(',', array_fill(0, count($partners), '?'));
+                $b = $pdo->prepare("SELECT 1 FROM blocked_users WHERE (blocker_id = ? AND blocked_id IN ($placeholders)) OR (blocker_id IN ($placeholders) AND blocked_id = ?) LIMIT 1");
+                $params = array_merge([$uid], $partners, $partners, [$uid]);
+                $b->execute($params);
                 if ($b->fetch()) throw new Exception('Пользователь заблокирован');
             }
 
@@ -1938,9 +1941,12 @@ try {
             if (!$stmt_chk->fetch()) throw new Exception('Доступ запрещен');
             $stmt_partners = $pdo->prepare("SELECT cp.user_id FROM conversation_participants cp WHERE cp.conversation_id = ? AND cp.user_id != ?");
             $stmt_partners->execute([$conv_id, $uid]);
-            while ($partner = $stmt_partners->fetch()) {
-                $b = $pdo->prepare("SELECT 1 FROM blocked_users WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?) LIMIT 1");
-                $b->execute([$uid, $partner['user_id'], $partner['user_id'], $uid]);
+            $partners = $stmt_partners->fetchAll(PDO::FETCH_COLUMN);
+            if (!empty($partners)) {
+                $placeholders = implode(',', array_fill(0, count($partners), '?'));
+                $b = $pdo->prepare("SELECT 1 FROM blocked_users WHERE (blocker_id = ? AND blocked_id IN ($placeholders)) OR (blocker_id IN ($placeholders) AND blocked_id = ?) LIMIT 1");
+                $params = array_merge([$uid], $partners, $partners, [$uid]);
+                $b->execute($params);
                 if ($b->fetch()) throw new Exception('Пользователь заблокирован');
             }
             $pdo->prepare("INSERT INTO pending_messages (conversation_id, sender_id, content) VALUES (?, ?, ?)")
