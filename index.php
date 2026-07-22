@@ -495,6 +495,16 @@ $is_dump_app = strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'DumpApp') !== false;
                     </div>
                     <div class="flex justify-between items-center mb-4" style="background: var(--surface-elevated); border-radius: var(--radius-md); padding: 0.75rem 1rem;">
                         <div>
+                            <div class="font-bold" style="font-size:0.95rem;">Функции бетатестирования</div>
+                            <div class="text-xs text-muted mt-1">Доступ к новым функциям до официального релиза</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="privacyBeta" onchange="togglePrivacyBeta(this)">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="flex justify-between items-center mb-4" style="background: var(--surface-elevated); border-radius: var(--radius-md); padding: 0.75rem 1rem;">
+                        <div>
                             <div class="font-bold" style="font-size:0.95rem;">Не показывайте мне рекламу</div>
                             <div class="text-xs text-muted mt-1">Скрывает рекламные баннеры на сайте</div>
                         </div>

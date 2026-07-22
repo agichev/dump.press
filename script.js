@@ -5653,7 +5653,18 @@
 
         window.togglePrivacyBeta = function(el) {
             savePrivacySetting('privacy_beta', el.checked);
+            updateBetaUI(el.checked);
         };
+
+        function updateBetaUI(enabled) {
+            // Messenger is now available to all users, so we no longer
+            // toggle navMsgBtn or bottomMsgBtn here based on beta status.
+            // This function is kept for future beta UI toggles.
+        }
+
+        function isBetaUser() {
+            return currentUser && currentUser.privacy_beta == 1;
+        }
 
         window.togglePrivacyNoAds = function(el) {
             savePrivacySetting('privacy_no_ads', el.checked);

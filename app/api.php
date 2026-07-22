@@ -312,7 +312,7 @@ try {
 
         case 'me':
             if ($current_session) {
-                $stmt = $pdo->prepare("SELECT id, username, email, avatar_url, bio, created_at, tfa_enabled, bookmarks_public, privacy_searchable, privacy_messages, captcha_required, privacy_no_ads, privacy_no_track FROM users WHERE id = ?");
+                $stmt = $pdo->prepare("SELECT id, username, email, avatar_url, bio, created_at, tfa_enabled, bookmarks_public, privacy_searchable, privacy_messages, privacy_beta, captcha_required, privacy_no_ads, privacy_no_track FROM users WHERE id = ?");
                 $stmt->execute([$current_session['user_id']]);
                 $user = $stmt->fetch();
                 $user['username'] = htmlspecialchars($user['username'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -1624,6 +1624,7 @@ try {
             requireAuth();
             $searchable = isset($_POST['privacy_searchable']) ? (int)(bool)$_POST['privacy_searchable'] : null;
             $messages = isset($_POST['privacy_messages']) ? (int)(bool)$_POST['privacy_messages'] : null;
+            $beta = isset($_POST['privacy_beta']) ? (int)(bool)$_POST['privacy_beta'] : null;
             $no_ads = isset($_POST['privacy_no_ads']) ? (int)(bool)$_POST['privacy_no_ads'] : null;
             $no_track = isset($_POST['privacy_no_track']) ? (int)(bool)$_POST['privacy_no_track'] : null;
 
@@ -1636,6 +1637,10 @@ try {
             if ($messages !== null) {
                 $updates[] = 'privacy_messages = ?';
                 $params[] = $messages;
+            }
+            if ($beta !== null) {
+                $updates[] = 'privacy_beta = ?';
+                $params[] = $beta;
             }
             if ($no_ads !== null) {
                 $updates[] = 'privacy_no_ads = ?';
@@ -1677,7 +1682,7 @@ try {
 
         case 'check_privacy':
             requireAuth();
-            $stmt = $pdo->prepare("SELECT privacy_searchable, privacy_messages, privacy_no_ads, privacy_no_track FROM users WHERE id = ?");
+            $stmt = $pdo->prepare("SELECT privacy_searchable, privacy_messages, privacy_beta, privacy_no_ads, privacy_no_track FROM users WHERE id = ?");
             $stmt->execute([$current_session['user_id']]);
             $privacy = $stmt->fetch();
             echo json_encode(['success' => true, 'privacy' => $privacy]);
